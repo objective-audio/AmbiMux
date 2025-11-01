@@ -1,14 +1,13 @@
 # AmbiMux
 
-`AmbiMux` is a CLI tool that embeds or replaces 1st Order Ambisonics (B-format, 4ch) in MOV videos. The 4-channel B-format must be in AmbiX format.
+`AmbiMux` is a CLI tool that embeds or replaces 1st Order Ambisonics (B-format, 4ch) in MOV videos for Apple Vision Pro. The 4-channel B-format must be in AmbiX format.
 
 ## Features
 
+- **Apple Vision Pro Support**: Optimized for spatial audio playback on Apple Vision Pro
 - **B-format Ambisonics Encoding**: Encodes 4-channel B-format Ambisonics in APAC format
-- **MOV Output**: Output in MOV container format
+- **MOV Output**: Output in MOV container format compatible with Vision Pro
 - **Video Preservation**: Preserves original video tracks
-- **Real-time Processing**: Efficient processing using AVAssetWriter
-- **Detailed Verification**: Displays detailed information about output files
 
 ## Installation
 
@@ -57,10 +56,11 @@ ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/
 ### Output Specifications
 
 - **Container**: MOV
-- **Audio**: APAC (Apple Positional Audio Codec)
+- **Audio**: APAC (Apple Positional Audio Codec) - optimized for Apple Vision Pro spatial audio
 - **Channel Layout**: HOA ACN SN3D (4ch)
 - **Bitrate**: 384kbps
 - **Video**: Copied from input video (audio uses specified WAV instead of existing video tracks)
+- **Target Platform**: Apple Vision Pro
 
 ## Development
 
