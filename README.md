@@ -1,11 +1,12 @@
 # AmbiMux
 
-`AmbiMux` is a CLI tool that embeds or replaces 1st Order Ambisonics (B-format, 4ch) in MOV videos for Apple Vision Pro. The 4-channel B-format must be in AmbiX format.
+`AmbiMux` is a CLI tool that embeds or replaces Ambisonics audio in MOV videos for Apple Vision Pro. It supports both encoding from WAV files (4-channel B-format) and copying APAC-encoded audio without re-encoding.
 
 ## Features
 
 - **Apple Vision Pro Support**: Optimized for spatial audio playback on Apple Vision Pro
 - **B-format Ambisonics Encoding**: Encodes 4-channel B-format Ambisonics in APAC format
+- **APAC Input Support**: Supports APAC-encoded input files with any channel count (copies without re-encoding)
 - **MOV Output**: Output in MOV container format compatible with Vision Pro
 - **Video Preservation**: Preserves original video tracks
 
@@ -41,7 +42,7 @@ ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/
 
 ### Command Line Arguments
 
-- `--audio`, `-a`: Path to 4ch B-format Ambisonics WAV (AmbiX format)
+- `--audio`, `-a`: Path to audio file (4ch B-format Ambisonics WAV in AmbiX format, or APAC-encoded file)
 - `--video`, `-v`: Path to input video
 - `--output`, `-o`: Output file path (optional, defaults to same name as video file)
 
@@ -49,7 +50,9 @@ ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/
 
 ### Input File Requirements
 
-- **Audio File**: 4-channel B-format Ambisonics WAV file (AmbiX format)
+- **Audio File**: 
+  - 4-channel B-format Ambisonics WAV file (AmbiX format) - will be encoded to APAC
+  - APAC-encoded file (any channel count) - will be copied without re-encoding
 - **Video File**: Any MOV/MP4 format video file
 - **Sample Rate**: 48kHz recommended (other rates supported)
 
@@ -57,9 +60,11 @@ ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/
 
 - **Container**: MOV
 - **Audio**: APAC (Apple Positional Audio Codec) - optimized for Apple Vision Pro spatial audio
-- **Channel Layout**: HOA ACN SN3D (4ch)
-- **Bitrate**: 384kbps
-- **Video**: Copied from input video (audio uses specified WAV instead of existing video tracks)
+- **Channel Layout**: 
+  - For WAV input: HOA ACN SN3D (4ch)
+  - For APAC input: Original channel layout and count preserved
+- **Bitrate**: 384kbps (for encoded audio)
+- **Video**: Copied from input video (audio uses specified audio file instead of existing video tracks)
 - **Target Platform**: Apple Vision Pro
 
 ## Development
