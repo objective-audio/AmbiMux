@@ -24,8 +24,8 @@ struct TestResourceHelperTests {
 
     @Test func testResourcePaths() throws {
         // Directly check resource file paths in test bundle
-        let wavPath = try TestResourceHelper.wavPath(for: "test_48k_4ch")
-        let movPath = try TestResourceHelper.movPath(for: "test")
+        let wavPath = try TestResourceHelper.resourcePath(for: "test_48k_4ch", withExtension: "wav")
+        let movPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
 
         // Verify files exist
         let wavExists = FileManager.default.fileExists(atPath: wavPath)

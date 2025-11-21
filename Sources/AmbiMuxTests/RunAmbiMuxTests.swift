@@ -11,8 +11,8 @@ struct RunAmbiMuxTests {
 		defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
 		// Get resource file paths
-		let audioPath = try TestResourceHelper.wavPath(for: "test_48k_4ch")
-		let videoPath = try TestResourceHelper.movPath(for: "test")
+		let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_4ch", withExtension: "wav")
+		let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
 
 		// Execute with explicit output path
 		let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent("runAmbi_output.mov").path
