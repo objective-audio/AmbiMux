@@ -22,10 +22,13 @@ nonisolated func validateAudioFile(audioPath: String) async throws {
     }
     let audioStreamBasicDescription = audioStreamBasicDescriptionPtr.pointee
 
-    // Check if it has 4 channels
-    guard audioStreamBasicDescription.mChannelsPerFrame == 4 else {
-        throw AmbiMuxError.invalidChannelCount(
-            count: Int(audioStreamBasicDescription.mChannelsPerFrame))
+    // Check if it has 4 channels (skip check for APAC codec)
+    let formatID = audioStreamBasicDescription.mFormatID
+    if formatID != kAudioFormatAPAC {
+        guard audioStreamBasicDescription.mChannelsPerFrame == 4 else {
+            throw AmbiMuxError.invalidChannelCount(
+                count: Int(audioStreamBasicDescription.mChannelsPerFrame))
+        }
     }
 
 }

@@ -14,14 +14,6 @@ struct TestResourceHelper {
         return url.path
     }
 
-    static func wavPath(for resource: String) throws -> String {
-        return try resourcePath(for: resource, withExtension: "wav")
-    }
-
-    static func movPath(for resource: String) throws -> String {
-        return try resourcePath(for: resource, withExtension: "mov")
-    }
-
     static func createTestDirectory() throws -> String {
         let fileManager = FileManager.default
         let temporaryDirectory = fileManager.temporaryDirectory

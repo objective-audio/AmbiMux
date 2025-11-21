@@ -44,25 +44,32 @@ nonisolated func convertVideoWithAudioToMOV(
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
     let sampleRate = audioStreamBasicDescription.pointee.mSampleRate
+    let formatID = audioStreamBasicDescription.pointee.mFormatID
+    let isAPAC = (formatID == kAudioFormatAPAC)
 
     // Create AVAssetReader
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
     let videoAssetReader = try AVAssetReader(asset: videoAsset)
 
-    // Audio settings for writing (B-format Ambisonics)
-    let ambisonicsLayout = AVAudioChannelLayout(
-        layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D | 4)!
-    let layoutData = Data(
-        bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
-
     // Create AVAssetReaderTrackOutput
-    let outputSettings: [String: Any] = [
-        AVFormatIDKey: kAudioFormatLinearPCM,
-        AVChannelLayoutKey: layoutData,
-    ]
-
-    let audioReaderOutput = AVAssetReaderTrackOutput(
-        track: audioTrack, outputSettings: outputSettings)
+    // For APAC, read in original format (avoid re-encoding)
+    let audioReaderOutput: AVAssetReaderTrackOutput
+    if isAPAC {
+        // Setting outputSettings to nil reads in original format (APAC)
+        audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+    } else {
+        // For non-APAC, convert to LinearPCM
+        let ambisonicsLayout = AVAudioChannelLayout(
+            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D | 4)!
+        let layoutData = Data(
+            bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
+        let outputSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVChannelLayoutKey: layoutData,
+        ]
+        audioReaderOutput = AVAssetReaderTrackOutput(
+            track: audioTrack, outputSettings: outputSettings)
+    }
     audioAssetReader.add(audioReaderOutput)
 
     // Create AVAssetReaderTrackOutput for video
@@ -71,19 +78,35 @@ nonisolated func convertVideoWithAudioToMOV(
 
     // Create AVAssetWriter
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
-    let writerAudioSettings: [String: Any] = [
-        AVFormatIDKey: kAudioFormatAPAC,
-        AVSampleRateKey: min(sampleRate, 48000),
-        AVNumberOfChannelsKey: 4,
-        AVChannelLayoutKey: layoutData,
-        AVEncoderBitRateKey: 384000,
-        AVEncoderContentSourceKey: AVAudioContentSource.appleAV_Spatial_Offline.rawValue,
-        AVEncoderDynamicRangeControlConfigurationKey: AVAudioDynamicRangeControlConfiguration
-            .movie.rawValue,
-        AVEncoderASPFrequencyKey: 75,
-    ]
-
-    let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerAudioSettings)
+    
+    // Create AVAssetWriterInput
+    // For APAC, write in original format (avoid re-encoding)
+    let audioInput: AVAssetWriterInput
+    if isAPAC {
+        // Set outputSettings to nil and inherit original format info via sourceFormatHint
+        audioInput = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: nil,
+            sourceFormatHint: formatDescription)
+    } else {
+        // For non-APAC, encode normally
+        let ambisonicsLayout = AVAudioChannelLayout(
+            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D | 4)!
+        let layoutData = Data(
+            bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
+        let writerAudioSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatAPAC,
+            AVSampleRateKey: min(sampleRate, 48000),
+            AVNumberOfChannelsKey: 4,
+            AVChannelLayoutKey: layoutData,
+            AVEncoderBitRateKey: 384000,
+            AVEncoderContentSourceKey: AVAudioContentSource.appleAV_Spatial_Offline.rawValue,
+            AVEncoderDynamicRangeControlConfigurationKey: AVAudioDynamicRangeControlConfiguration
+                .movie.rawValue,
+            AVEncoderASPFrequencyKey: 75,
+        ]
+        audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerAudioSettings)
+    }
     audioInput.expectsMediaDataInRealTime = false
 
     // Create AVAssetWriterInput for video
