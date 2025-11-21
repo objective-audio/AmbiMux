@@ -6,7 +6,7 @@ import Testing
 
 struct AudioConvertersTests {
 
-    @Test func testAmbiMuxConversion() async throws {
+    @Test func testAmbiMuxConversionWithWAV() async throws {
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()
 
@@ -29,8 +29,80 @@ struct AudioConvertersTests {
         let outputExists = FileManager.default.fileExists(atPath: outputPath)
         #expect(outputExists, "Output file should be created at \(outputPath)")
 
+        // Verify output file has audio track with correct channel count
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
+        let audioTrack = try #require(audioTracks.first, "Output file has no audio track")
+
+        let formatDescriptions = try await audioTrack.load(.formatDescriptions)
+        let audioFormat = try #require(
+            formatDescriptions.first, "Could not retrieve audio format information")
+
+        let audioStreamBasicDescriptionPtr = try #require(
+            CMAudioFormatDescriptionGetStreamBasicDescription(audioFormat),
+            "Could not retrieve audio stream information")
+        let channelCount = Int(audioStreamBasicDescriptionPtr.pointee.mChannelsPerFrame)
+
+        // Verify output has 4 channels (WAV input is 4-channel B-format)
+        #expect(
+            channelCount == 4,
+            "Output audio should have 4 channels (actual=\(channelCount))"
+        )
+
         // Remove test directory
         try TestResourceHelper.removeTestDirectory(at: cachePath)
+    }
+
+    @Test func testAmbiMuxConversionWithAPAC() async throws {
+        // Create test directory
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        // Get resource file paths (APAC-encoded audio)
+        let audioPath = try TestResourceHelper.resourcePath(for: "test_apac", withExtension: "mp4")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+
+        // Generate output file path
+        let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent("test_apac_output.mov")
+            .path
+
+        // Execute conversion
+        try await convertVideoWithAudioToMOV(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
+
+        // Verify output file was created
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Output file should be created at \(outputPath)")
+
+        // Verify output file has audio track with APAC format
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
+        let audioTrack = try #require(audioTracks.first, "Output file has no audio track")
+
+        let formatDescriptions = try await audioTrack.load(.formatDescriptions)
+        let audioFormat = try #require(
+            formatDescriptions.first, "Could not retrieve audio format information")
+
+        let audioStreamBasicDescriptionPtr = try #require(
+            CMAudioFormatDescriptionGetStreamBasicDescription(audioFormat),
+            "Could not retrieve audio stream information")
+        let formatID = audioStreamBasicDescriptionPtr.pointee.mFormatID
+        let channelCount = Int(audioStreamBasicDescriptionPtr.pointee.mChannelsPerFrame)
+
+        // Verify output is APAC format
+        #expect(
+            formatID == kAudioFormatAPAC,
+            "Output audio should be APAC format (formatID=\(formatID))"
+        )
+
+        // Verify output has 7 channels (APAC input preserves original channel count)
+        #expect(
+            channelCount == 7,
+            "Output audio should have 7 channels (actual=\(channelCount))"
+        )
     }
 
     @Test func testConvertFailsWhenAudioMissing() async throws {
