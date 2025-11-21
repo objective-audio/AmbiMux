@@ -6,14 +6,14 @@ import Foundation
 struct AmbiMuxMain: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ambimux",
-        abstract: "Mux or replace 1st-order Ambisonics (B-format) into MOV video",
+        abstract: "Mux or replace spatial audio into MOV videos using APAC encoding",
         discussion:
-            "Combines or replaces the video's audio with a specified 4-channel B-format Ambisonics WAV and outputs a MOV. Internally uses APAC where appropriate, but the primary purpose is FOA muxing/replacement."
+            "Embeds or replaces spatial audio in MOV videos for Apple Vision Pro. Supports encoding from audio files (4-channel B-format Ambisonics) and copying APAC-encoded spatial audio without re-encoding."
     )
 
     @Option(
         name: [.customShort("a"), .customLong("audio")],
-        help: "Audio file path (4-channel B-format Ambisonics WAV)"
+        help: "Audio file path (4-channel B-format Ambisonics, or APAC-encoded file)"
     )
     var audioFilePath: String?
 
