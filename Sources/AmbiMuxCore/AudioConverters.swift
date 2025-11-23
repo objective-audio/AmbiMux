@@ -1,8 +1,29 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreAudioTypes
 import CoreMedia
 import Foundation
 import os
+
+// Process samples from reader output to writer input
+nonisolated func processSamples(
+    readerOutput: AVAssetReaderTrackOutput,
+    writerInput: AVAssetWriterInput
+) async throws {
+    while true {
+        // Wait until writer input is ready for more media data
+        while !writerInput.isReadyForMoreMediaData {
+            await Task.yield()
+        }
+        
+        // Get next sample buffer
+        guard let sampleBuffer = readerOutput.copyNextSampleBuffer() else {
+            writerInput.markAsFinished()
+            break
+        }
+        
+        writerInput.append(sampleBuffer)
+    }
+}
 
 // Process video and audio and output to MOV file
 nonisolated func convertVideoWithAudioToMOV(
@@ -127,44 +148,30 @@ nonisolated func convertVideoWithAudioToMOV(
     videoAssetReader.startReading()
     audioAssetReader.startReading()
 
-    let audioFinished = OSAllocatedUnfairLock(initialState: false)
-    let videoFinished = OSAllocatedUnfairLock(initialState: false)
-
-    // Create Serial Queue for each Input
-    let audioQueue = DispatchQueue(label: "jp.objective-audio.ambimux.audio", qos: .userInitiated)
-    let videoQueue = DispatchQueue(label: "jp.objective-audio.ambimux.video", qos: .userInitiated)
-
-    // Read and write video data asynchronously
-    videoInput.requestMediaDataWhenReady(on: videoQueue) {
-        while videoInput.isReadyForMoreMediaData && !(videoFinished.withLock { $0 }) {
-            if let sampleBuffer = videoReaderOutput.copyNextSampleBuffer() {
-                videoInput.append(sampleBuffer)
-            } else {
-                videoInput.markAsFinished()
-                videoFinished.withLock { $0 = true }
-            }
+    // Process video and audio samples concurrently
+    // Note: AVAssetWriterInput and AVAssetReaderTrackOutput are not Sendable,
+    // but they are safe to use in separate tasks as they are independent objects
+    // Using withTaskGroup to work around Swift 6 strict concurrency checks
+    try await withThrowingTaskGroup(of: Void.self) { group in
+        // Process video samples
+        group.addTask { [videoReaderOutput, videoInput] in
+            try await processSamples(
+                readerOutput: videoReaderOutput,
+                writerInput: videoInput
+            )
         }
+        
+        // Process audio samples
+        group.addTask { [audioReaderOutput, audioInput] in
+            try await processSamples(
+                readerOutput: audioReaderOutput,
+                writerInput: audioInput
+            )
+        }
+        
+        // Wait for both tasks to complete
+        try await group.waitForAll()
     }
-
-    // Read and write audio data asynchronously
-    audioInput.requestMediaDataWhenReady(on: audioQueue) {
-        while audioInput.isReadyForMoreMediaData && !(audioFinished.withLock { $0 }) {
-            if let sampleBuffer = audioReaderOutput.copyNextSampleBuffer() {
-                audioInput.append(sampleBuffer)
-            } else {
-                audioInput.markAsFinished()
-                audioFinished.withLock { $0 = true }
-            }
-        }
-    }
-
-    // Wait for async processing using Task
-    try await Task {
-        // Wait until all processing is complete
-        while !(audioFinished.withLock { $0 }) || !(videoFinished.withLock { $0 }) {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-    }.value
 
     // Use async version of finishWriting
     await assetWriter.finishWriting()
