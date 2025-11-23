@@ -28,7 +28,7 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "AmbiMuxMain",
+            name: "ambimux",
             dependencies: [
                 "AmbiMuxCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
