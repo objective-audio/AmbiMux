@@ -49,6 +49,19 @@ struct AudioConvertersTests {
             "Output audio should have 4 channels (actual=\(channelCount))"
         )
 
+        // Verify output video duration matches expected duration (1.0 second, within 0.1 second tolerance)
+        let expectedDuration: Double = 1.0
+        let outputVideoTracks = try await outputAsset.loadTracks(withMediaType: .video)
+        let outputVideoTrack = try #require(outputVideoTracks.first, "Output file has no video track")
+        let outputTimeRange = try await outputVideoTrack.load(.timeRange)
+        let outputDuration = CMTimeGetSeconds(outputTimeRange.duration)
+
+        let durationDifference = abs(outputDuration - expectedDuration)
+        #expect(
+            durationDifference < 0.1,
+            "Output video duration should be approximately \(expectedDuration) seconds (expected=\(String(format: "%.3f", expectedDuration))s, actual=\(String(format: "%.3f", outputDuration))s, difference=\(String(format: "%.3f", durationDifference))s)"
+        )
+
         // Remove test directory
         try TestResourceHelper.removeTestDirectory(at: cachePath)
     }
@@ -102,6 +115,19 @@ struct AudioConvertersTests {
         #expect(
             channelCount == 7,
             "Output audio should have 7 channels (actual=\(channelCount))"
+        )
+
+        // Verify output video duration matches expected duration (1.0 second, within 0.1 second tolerance)
+        let expectedDuration: Double = 1.0
+        let outputVideoTracks = try await outputAsset.loadTracks(withMediaType: .video)
+        let outputVideoTrack = try #require(outputVideoTracks.first, "Output file has no video track")
+        let outputTimeRange = try await outputVideoTrack.load(.timeRange)
+        let outputDuration = CMTimeGetSeconds(outputTimeRange.duration)
+
+        let durationDifference = abs(outputDuration - expectedDuration)
+        #expect(
+            durationDifference < 0.1,
+            "Output video duration should be approximately \(expectedDuration) seconds (expected=\(String(format: "%.3f", expectedDuration))s, actual=\(String(format: "%.3f", outputDuration))s, difference=\(String(format: "%.3f", durationDifference))s)"
         )
     }
 
