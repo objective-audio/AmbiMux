@@ -10,8 +10,12 @@ nonisolated func processAudioSamples(
     writerInput: AVAssetWriterInput
 ) async throws {
     while let readySampleBuffer = try await provider.next() {
+        // Wait for input to be ready before appending
+        while !writerInput.isReadyForMoreMediaData {
+            try await Task.sleep(for: .milliseconds(1))
+        }
         // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
-        try readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+        readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
             writerInput.append(cmSampleBuffer)
         }
     }
@@ -24,8 +28,12 @@ nonisolated func processVideoSamples(
     writerInput: AVAssetWriterInput
 ) async throws {
     while let readySampleBuffer = try await provider.next() {
+        // Wait for input to be ready before appending
+        while !writerInput.isReadyForMoreMediaData {
+            try await Task.sleep(for: .milliseconds(1))
+        }
         // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
-        try readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+        readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
             writerInput.append(cmSampleBuffer)
         }
     }
