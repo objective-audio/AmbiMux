@@ -15,7 +15,7 @@ nonisolated func processAudioSamples(
             try await Task.sleep(for: .milliseconds(1))
         }
         // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
-        readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+        _ = readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
             writerInput.append(cmSampleBuffer)
         }
     }
@@ -33,7 +33,7 @@ nonisolated func processVideoSamples(
             try await Task.sleep(for: .milliseconds(1))
         }
         // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
-        readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+        _ = readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
             writerInput.append(cmSampleBuffer)
         }
     }
