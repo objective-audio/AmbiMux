@@ -4,42 +4,6 @@ import CoreMedia
 import Foundation
 import os
 
-// Process audio samples using provider pattern
-nonisolated func processAudioSamples(
-    provider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>,
-    writerInput: AVAssetWriterInput
-) async throws {
-    while let readySampleBuffer = try await provider.next() {
-        // Wait for input to be ready before appending
-        while !writerInput.isReadyForMoreMediaData {
-            try await Task.sleep(for: .milliseconds(1))
-        }
-        // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
-        _ = readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
-            writerInput.append(cmSampleBuffer)
-        }
-    }
-    writerInput.markAsFinished()
-}
-
-// Process video samples using provider pattern
-nonisolated func processVideoSamples(
-    provider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>,
-    writerInput: AVAssetWriterInput
-) async throws {
-    while let readySampleBuffer = try await provider.next() {
-        // Wait for input to be ready before appending
-        while !writerInput.isReadyForMoreMediaData {
-            try await Task.sleep(for: .milliseconds(1))
-        }
-        // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
-        _ = readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
-            writerInput.append(cmSampleBuffer)
-        }
-    }
-    writerInput.markAsFinished()
-}
-
 // Process video and audio and output to MOV file
 nonisolated func convertVideoWithAudioToMOV(
     audioPath: String, videoPath: String, outputPath: String
@@ -174,18 +138,32 @@ nonisolated func convertVideoWithAudioToMOV(
     try await withThrowingTaskGroup(of: Void.self) { group in
         // Process video samples
         group.addTask {
-            try await processVideoSamples(
-                provider: videoProvider,
-                writerInput: videoInput
-            )
+            while let readySampleBuffer = try await videoProvider.next() {
+                // Wait for input to be ready before appending
+                while !videoInput.isReadyForMoreMediaData {
+                    try await Task.sleep(for: .milliseconds(1))
+                }
+                // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
+                _ = readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+                    videoInput.append(cmSampleBuffer)
+                }
+            }
+            videoInput.markAsFinished()
         }
         
         // Process audio samples
         group.addTask {
-            try await processAudioSamples(
-                provider: audioProvider,
-                writerInput: audioInput
-            )
+            while let readySampleBuffer = try await audioProvider.next() {
+                // Wait for input to be ready before appending
+                while !audioInput.isReadyForMoreMediaData {
+                    try await Task.sleep(for: .milliseconds(1))
+                }
+                // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
+                _ = readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+                    audioInput.append(cmSampleBuffer)
+                }
+            }
+            audioInput.markAsFinished()
         }
         
         // Wait for both tasks to complete
