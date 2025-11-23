@@ -4,25 +4,32 @@ import CoreMedia
 import Foundation
 import os
 
-// Process samples from reader output to writer input
-nonisolated func processSamples(
-    readerOutput: AVAssetReaderTrackOutput,
+// Process audio samples using provider pattern
+nonisolated func processAudioSamples(
+    provider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>,
     writerInput: AVAssetWriterInput
 ) async throws {
-    while true {
-        // Wait until writer input is ready for more media data
-        while !writerInput.isReadyForMoreMediaData {
-            await Task.yield()
+    while let readySampleBuffer = try await provider.next() {
+        // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
+        try readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+            writerInput.append(cmSampleBuffer)
         }
-        
-        // Get next sample buffer
-        guard let sampleBuffer = readerOutput.copyNextSampleBuffer() else {
-            writerInput.markAsFinished()
-            break
-        }
-        
-        writerInput.append(sampleBuffer)
     }
+    writerInput.markAsFinished()
+}
+
+// Process video samples using provider pattern
+nonisolated func processVideoSamples(
+    provider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>,
+    writerInput: AVAssetWriterInput
+) async throws {
+    while let readySampleBuffer = try await provider.next() {
+        // Extract CMSampleBuffer from CMReadySampleBuffer and append to writer input
+        try readySampleBuffer.withUnsafeSampleBuffer { cmSampleBuffer in
+            writerInput.append(cmSampleBuffer)
+        }
+    }
+    writerInput.markAsFinished()
 }
 
 // Process video and audio and output to MOV file
@@ -49,6 +56,9 @@ nonisolated func convertVideoWithAudioToMOV(
     guard let videoTrack = videoTracks.first else {
         throw AmbiMuxError.videoTrackNotFound
     }
+    
+    // Get video frame size for pixel buffer attributes
+    let videoFrameSize = try await videoTrack.load(.naturalSize)
 
     // Do not use audio tracks from video file
 
@@ -91,11 +101,15 @@ nonisolated func convertVideoWithAudioToMOV(
         audioReaderOutput = AVAssetReaderTrackOutput(
             track: audioTrack, outputSettings: outputSettings)
     }
-    audioAssetReader.add(audioReaderOutput)
+    // Note: outputProvider(for:) internally calls addOutput, so we don't need to call add() separately
+    // Get audio provider (this will add the output internally)
+    let audioProvider = audioAssetReader.outputProvider(for: audioReaderOutput)
 
     // Create AVAssetReaderTrackOutput for video
     let videoReaderOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-    videoAssetReader.add(videoReaderOutput)
+    
+    // Get video provider (this will add the output internally)
+    let videoProvider = videoAssetReader.outputProvider(for: videoReaderOutput)
 
     // Create AVAssetWriter
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
@@ -142,29 +156,26 @@ nonisolated func convertVideoWithAudioToMOV(
         assetWriter.add(audioInput)
     }
 
-    // Start reading and writing
-    assetWriter.startWriting()
+    // Start reading and writing using new API
+    try assetWriter.start()
     assetWriter.startSession(atSourceTime: .zero)
-    videoAssetReader.startReading()
-    audioAssetReader.startReading()
+    try videoAssetReader.start()
+    try audioAssetReader.start()
 
-    // Process video and audio samples concurrently
-    // Note: AVAssetWriterInput and AVAssetReaderTrackOutput are not Sendable,
-    // but they are safe to use in separate tasks as they are independent objects
-    // Using withTaskGroup to work around Swift 6 strict concurrency checks
+    // Process video and audio samples concurrently using provider pattern
     try await withThrowingTaskGroup(of: Void.self) { group in
         // Process video samples
-        group.addTask { [videoReaderOutput, videoInput] in
-            try await processSamples(
-                readerOutput: videoReaderOutput,
+        group.addTask {
+            try await processVideoSamples(
+                provider: videoProvider,
                 writerInput: videoInput
             )
         }
         
         // Process audio samples
-        group.addTask { [audioReaderOutput, audioInput] in
-            try await processSamples(
-                readerOutput: audioReaderOutput,
+        group.addTask {
+            try await processAudioSamples(
+                provider: audioProvider,
                 writerInput: audioInput
             )
         }
