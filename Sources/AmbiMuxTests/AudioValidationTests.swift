@@ -20,7 +20,8 @@ struct AudioValidationTests {
         fileExtension: String,
         shouldSucceed: Bool
     ) async throws {
-        let audioPath = try TestResourceHelper.resourcePath(for: fileName, withExtension: fileExtension)
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: fileName, withExtension: fileExtension)
 
         do {
             try await validateAudioFile(audioPath: audioPath)
