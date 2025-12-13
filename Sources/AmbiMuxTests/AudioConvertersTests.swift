@@ -11,7 +11,8 @@ struct AudioConvertersTests {
         let cachePath = try TestResourceHelper.createTestDirectory()
 
         // Get resource file paths
-        let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_4ch", withExtension: "wav")
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
         let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
 
         // Generate output file path (full path specified)
@@ -63,8 +64,10 @@ struct AudioConvertersTests {
         let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
 
         // Generate output file path
-        let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent("test_apac_output.mov")
-            .path
+        let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
+            "test_apac_output.mov"
+        )
+        .path
 
         // Execute conversion
         try await convertVideoWithAudioToMOV(
@@ -135,7 +138,8 @@ struct AudioConvertersTests {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
-        let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_4ch", withExtension: "wav")
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
         // Specify non-existent video path
         let missingVideoPath = "/this/path/does/not/exist.mov"
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
@@ -190,7 +194,8 @@ struct AudioConvertersTests {
         // Verify output file sample rate
         let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
         let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
-        let audioTrack = try #require(audioTracks.first, "\(fileName): Output file has no audio track")
+        let audioTrack = try #require(
+            audioTracks.first, "\(fileName): Output file has no audio track")
 
         let formatDescriptions = try await audioTrack.load(.formatDescriptions)
         let audioFormat = try #require(

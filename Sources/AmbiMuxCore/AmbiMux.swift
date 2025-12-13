@@ -2,7 +2,8 @@ import AVFoundation
 import Foundation
 
 nonisolated public func runAmbiMux(audioPath: String, videoPath: String, outputPath: String? = nil)
-    async throws {
+    async throws
+{
     // Validate audio file
     try await validateAudioFile(audioPath: audioPath)
 

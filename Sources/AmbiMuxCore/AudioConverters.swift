@@ -78,7 +78,7 @@ nonisolated func convertVideoWithAudioToMOV(
 
     // Create AVAssetWriter
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
-    
+
     // Create AVAssetWriterInput
     // For APAC, write in original format (avoid re-encoding)
     let audioInput: AVAssetWriterInput
