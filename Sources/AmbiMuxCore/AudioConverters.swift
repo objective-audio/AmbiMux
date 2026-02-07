@@ -38,13 +38,12 @@ nonisolated func convertVideoWithAudioToMOV(
     }
 
     guard
-        let audioStreamBasicDescription = CMAudioFormatDescriptionGetStreamBasicDescription(
-            formatDescription)
+        let audioStreamBasicDescription = formatDescription.audioStreamBasicDescription
     else {
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
-    let sampleRate = audioStreamBasicDescription.pointee.mSampleRate
-    let formatID = audioStreamBasicDescription.pointee.mFormatID
+    let sampleRate = audioStreamBasicDescription.mSampleRate
+    let formatID = audioStreamBasicDescription.mFormatID
     let isAPAC = (formatID == kAudioFormatAPAC)
 
     // Create AVAssetReader
@@ -135,7 +134,12 @@ nonisolated func convertVideoWithAudioToMOV(
     let videoQueue = DispatchQueue(label: "jp.objective-audio.ambimux.video", qos: .userInitiated)
 
     // Read and write video data asynchronously
+    let videoInputRef = UncheckedSendableRef(videoInput)
+    let videoReaderOutputRef = UncheckedSendableRef(videoReaderOutput)
     videoInput.requestMediaDataWhenReady(on: videoQueue) {
+        let videoInput = videoInputRef.value
+        let videoReaderOutput = videoReaderOutputRef.value
+
         while videoInput.isReadyForMoreMediaData && !(videoFinished.withLock { $0 }) {
             if let sampleBuffer = videoReaderOutput.copyNextSampleBuffer() {
                 videoInput.append(sampleBuffer)
@@ -147,7 +151,12 @@ nonisolated func convertVideoWithAudioToMOV(
     }
 
     // Read and write audio data asynchronously
+    let audioInputRef = UncheckedSendableRef(audioInput)
+    let audioReaderOutputRef = UncheckedSendableRef(audioReaderOutput)
     audioInput.requestMediaDataWhenReady(on: audioQueue) {
+        let audioInput = audioInputRef.value
+        let audioReaderOutput = audioReaderOutputRef.value
+
         while audioInput.isReadyForMoreMediaData && !(audioFinished.withLock { $0 }) {
             if let sampleBuffer = audioReaderOutput.copyNextSampleBuffer() {
                 audioInput.append(sampleBuffer)
