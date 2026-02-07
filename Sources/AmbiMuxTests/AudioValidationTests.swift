@@ -11,6 +11,8 @@ struct AudioValidationTests {
             ("test_48k_1ch", "wav", AudioInputMode.lpcm, false),
             ("test_48k_2ch", "wav", AudioInputMode.lpcm, false),
             ("test_48k_4ch", "wav", AudioInputMode.lpcm, true),
+            ("test_48k_9ch", "wav", AudioInputMode.lpcm, true),
+            ("test_48k_16ch", "wav", AudioInputMode.lpcm, true),
             ("test_44k_4ch", "wav", AudioInputMode.lpcm, true),
             ("test_96k_4ch", "wav", AudioInputMode.lpcm, true),
             ("test_apac", "mp4", AudioInputMode.apac, true),
