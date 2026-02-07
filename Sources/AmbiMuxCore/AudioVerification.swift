@@ -30,9 +30,10 @@ nonisolated func validateAudioFile(audioPath: String, audioMode: AudioInputMode)
             throw AmbiMuxError.expectedAPACAudio
         }
     case .lpcm:
-        guard audioStreamBasicDescription.mChannelsPerFrame == 4 else {
+        let channels = Int(audioStreamBasicDescription.mChannelsPerFrame)
+        guard AmbisonicsOrder(channelCount: channels) != nil else {
             throw AmbiMuxError.invalidChannelCount(
-                count: Int(audioStreamBasicDescription.mChannelsPerFrame))
+                count: channels)
         }
     }
 

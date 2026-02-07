@@ -46,6 +46,7 @@ nonisolated func convertVideoWithAudioToMOV(
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
     let sampleRate = audioStreamBasicDescription.mSampleRate
+    let channelCount = Int(audioStreamBasicDescription.mChannelsPerFrame)
     let isAPAC: Bool
     switch audioMode {
     case .apac:
@@ -66,8 +67,12 @@ nonisolated func convertVideoWithAudioToMOV(
         audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     } else {
         // For LPCM mode, convert to LinearPCM
+        guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
+            throw AmbiMuxError.invalidChannelCount(count: channelCount)
+        }
         let ambisonicsLayout = AVAudioChannelLayout(
-            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D | 4)!
+            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
+                | AudioChannelLayoutTag(ambisonicsOrder.channelCount))!
         let layoutData = Data(
             bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
         let outputSettings: [String: Any] = [
@@ -97,14 +102,18 @@ nonisolated func convertVideoWithAudioToMOV(
             sourceFormatHint: formatDescription)
     } else {
         // For LPCM mode, encode to APAC
+        guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
+            throw AmbiMuxError.invalidChannelCount(count: channelCount)
+        }
         let ambisonicsLayout = AVAudioChannelLayout(
-            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D | 4)!
+            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
+                | AudioChannelLayoutTag(ambisonicsOrder.channelCount))!
         let layoutData = Data(
             bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
         let writerAudioSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatAPAC,
             AVSampleRateKey: min(sampleRate, 48000),
-            AVNumberOfChannelsKey: 4,
+            AVNumberOfChannelsKey: ambisonicsOrder.channelCount,
             AVChannelLayoutKey: layoutData,
             AVEncoderBitRateKey: 384000,
             AVEncoderContentSourceKey: AVAudioContentSource.appleAV_Spatial_Offline.rawValue,
