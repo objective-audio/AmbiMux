@@ -38,13 +38,12 @@ nonisolated func convertVideoWithAudioToMOV(
     }
 
     guard
-        let audioStreamBasicDescription = CMAudioFormatDescriptionGetStreamBasicDescription(
-            formatDescription)
+        let audioStreamBasicDescription = formatDescription.audioStreamBasicDescription
     else {
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
-    let sampleRate = audioStreamBasicDescription.pointee.mSampleRate
-    let formatID = audioStreamBasicDescription.pointee.mFormatID
+    let sampleRate = audioStreamBasicDescription.mSampleRate
+    let formatID = audioStreamBasicDescription.mFormatID
     let isAPAC = (formatID == kAudioFormatAPAC)
 
     // Create AVAssetReader
