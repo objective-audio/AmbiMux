@@ -8,6 +8,7 @@ enum AmbiMuxError: Error, LocalizedError {
     // Audio validation errors
     case noAudioTracksFound
     case invalidChannelCount(count: Int)
+    case expectedAPACAudio
     case couldNotGetAudioStreamDescription
     case couldNotRetrieveFormatInformation
 
@@ -27,6 +28,8 @@ enum AmbiMuxError: Error, LocalizedError {
         case .invalidChannelCount(let count):
             return
                 "Audio file must have exactly 4 channels for B-format Ambisonics. Current channels: \(count)"
+        case .expectedAPACAudio:
+            return "Audio file must be APAC-encoded"
         case .couldNotGetAudioStreamDescription:
             return "Could not get audio stream basic description"
         case .couldNotRetrieveFormatInformation:

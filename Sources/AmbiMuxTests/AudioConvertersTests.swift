@@ -22,6 +22,7 @@ struct AudioConvertersTests {
         // Execute conversion
         try await convertVideoWithAudioToMOV(
             audioPath: audioPath,
+            audioMode: .lpcm,
             videoPath: videoPath,
             outputPath: outputPath
         )
@@ -72,6 +73,7 @@ struct AudioConvertersTests {
         // Execute conversion
         try await convertVideoWithAudioToMOV(
             audioPath: audioPath,
+            audioMode: .apac,
             videoPath: videoPath,
             outputPath: outputPath
         )
@@ -123,6 +125,7 @@ struct AudioConvertersTests {
         do {
             try await convertVideoWithAudioToMOV(
                 audioPath: missingAudioPath,
+                audioMode: .lpcm,
                 videoPath: videoPath,
                 outputPath: outputPath
             )
@@ -149,6 +152,7 @@ struct AudioConvertersTests {
         do {
             try await convertVideoWithAudioToMOV(
                 audioPath: audioPath,
+                audioMode: .lpcm,
                 videoPath: missingVideoPath,
                 outputPath: outputPath
             )
@@ -183,6 +187,7 @@ struct AudioConvertersTests {
         // Execute conversion
         try await convertVideoWithAudioToMOV(
             audioPath: audioPath,
+            audioMode: .lpcm,
             videoPath: videoPath,
             outputPath: outputPath
         )

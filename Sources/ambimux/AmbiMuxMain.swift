@@ -12,10 +12,16 @@ struct AmbiMuxMain: AsyncParsableCommand {
     )
 
     @Option(
-        name: [.customShort("a"), .customLong("audio")],
-        help: "Audio file path (4-channel B-format Ambisonics, or APAC-encoded file)"
+        name: [.customLong("apac")],
+        help: "APAC-encoded audio file path (copied without re-encoding)"
     )
-    var audioFilePath: String?
+    var apacAudioFilePath: String?
+
+    @Option(
+        name: [.customLong("lpcm")],
+        help: "4-channel B-format Ambisonics audio file path (encoded to APAC)"
+    )
+    var lpcmAudioFilePath: String?
 
     @Option(
         name: [.customShort("v"), .customLong("video")],
@@ -30,10 +36,30 @@ struct AmbiMuxMain: AsyncParsableCommand {
     var outputFilePath: String?
 
     mutating func run() async throws {
-        guard let audioPath = audioFilePath, let videoPath = videoFilePath else {
-            throw ValidationError("--audio and --video are required")
+        guard let videoPath = videoFilePath else {
+            throw ValidationError("--video is required")
         }
 
-        try await runAmbiMux(audioPath: audioPath, videoPath: videoPath, outputPath: outputFilePath)
+        let apacPath = apacAudioFilePath
+        let lpcmPath = lpcmAudioFilePath
+
+        switch (apacPath, lpcmPath) {
+        case (let apac?, nil):
+            try await runAmbiMux(
+                audioPath: apac,
+                audioMode: .apac,
+                videoPath: videoPath,
+                outputPath: outputFilePath
+            )
+        case (nil, let lpcm?):
+            try await runAmbiMux(
+                audioPath: lpcm,
+                audioMode: .lpcm,
+                videoPath: videoPath,
+                outputPath: outputFilePath
+            )
+        default:
+            throw ValidationError("Exactly one of --apac or --lpcm is required")
+        }
     }
 }

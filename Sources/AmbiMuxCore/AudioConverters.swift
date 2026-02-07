@@ -6,7 +6,10 @@ import os
 
 // Process video and audio and output to MOV file
 nonisolated func convertVideoWithAudioToMOV(
-    audioPath: String, videoPath: String, outputPath: String
+    audioPath: String,
+    audioMode: AudioInputMode,
+    videoPath: String,
+    outputPath: String
 ) async throws {
     let audioURL = URL(fileURLWithPath: audioPath)
     let videoURL = URL(fileURLWithPath: videoPath)
@@ -43,8 +46,13 @@ nonisolated func convertVideoWithAudioToMOV(
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
     let sampleRate = audioStreamBasicDescription.mSampleRate
-    let formatID = audioStreamBasicDescription.mFormatID
-    let isAPAC = (formatID == kAudioFormatAPAC)
+    let isAPAC: Bool
+    switch audioMode {
+    case .apac:
+        isAPAC = true
+    case .lpcm:
+        isAPAC = false
+    }
 
     // Create AVAssetReader
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
@@ -57,7 +65,7 @@ nonisolated func convertVideoWithAudioToMOV(
         // Setting outputSettings to nil reads in original format (APAC)
         audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     } else {
-        // For non-APAC, convert to LinearPCM
+        // For LPCM mode, convert to LinearPCM
         let ambisonicsLayout = AVAudioChannelLayout(
             layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D | 4)!
         let layoutData = Data(
@@ -88,7 +96,7 @@ nonisolated func convertVideoWithAudioToMOV(
             outputSettings: nil,
             sourceFormatHint: formatDescription)
     } else {
-        // For non-APAC, encode normally
+        // For LPCM mode, encode to APAC
         let ambisonicsLayout = AVAudioChannelLayout(
             layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D | 4)!
         let layoutData = Data(
