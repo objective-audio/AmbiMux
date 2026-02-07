@@ -33,16 +33,20 @@ swift build -c release
 ### Basic Usage
 
 ```bash
-# Output MOV with audio (B-format 4ch audio file) and video (default output)
-ambimux --audio /path/to/audio.wav --video /path/to/video.mov
+# Output MOV with B-format 4ch audio (encoded to APAC) and video (default output)
+ambimux --lpcm /path/to/audio.wav --video /path/to/video.mov
+
+# Output MOV with APAC audio (copied without re-encoding) and video (default output)
+ambimux --apac /path/to/audio.mp4 --video /path/to/video.mov
 
 # Specify custom output path
-ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/output.mov
+ambimux --lpcm /path/to/audio.wav --video /path/to/video.mov --output /path/to/output.mov
 ```
 
 ### Command Line Arguments
 
-- `--audio`, `-a`: Path to audio file (4ch B-format Ambisonics in AmbiX format, or APAC-encoded file)
+- `--apac`: Path to APAC-encoded audio file (copied without re-encoding)
+- `--lpcm`: Path to 4-channel B-format Ambisonics audio file (encoded to APAC)
 - `--video`, `-v`: Path to input video
 - `--output`, `-o`: Output file path (optional, defaults to same name as video file)
 

@@ -19,7 +19,12 @@ struct RunAmbiMuxTests {
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
             "runAmbi_output.mov"
         ).path
-        try await runAmbiMux(audioPath: audioPath, videoPath: videoPath, outputPath: outputPath)
+        try await runAmbiMux(
+            audioPath: audioPath,
+            audioMode: .lpcm,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
 
         // Verify output file was created
         let outputExists = FileManager.default.fileExists(atPath: outputPath)
@@ -39,7 +44,12 @@ struct RunAmbiMuxTests {
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
             "runAmbi_apac_output.mov"
         ).path
-        try await runAmbiMux(audioPath: audioPath, videoPath: videoPath, outputPath: outputPath)
+        try await runAmbiMux(
+            audioPath: audioPath,
+            audioMode: .apac,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
 
         // Verify output file was created
         let outputExists = FileManager.default.fileExists(atPath: outputPath)

@@ -3,7 +3,7 @@ import CoreAudioTypes
 import Foundation
 
 // Validate audio file
-nonisolated func validateAudioFile(audioPath: String) async throws {
+nonisolated func validateAudioFile(audioPath: String, audioMode: AudioInputMode) async throws {
     let audioAsset = AVURLAsset(url: URL(fileURLWithPath: audioPath))
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
 
@@ -22,9 +22,14 @@ nonisolated func validateAudioFile(audioPath: String) async throws {
     }
     let audioStreamBasicDescription = audioStreamBasicDescriptionPtr.pointee
 
-    // Check if it has 4 channels (skip check for APAC codec)
     let formatID = audioStreamBasicDescription.mFormatID
-    if formatID != kAudioFormatAPAC {
+
+    switch audioMode {
+    case .apac:
+        guard formatID == kAudioFormatAPAC else {
+            throw AmbiMuxError.expectedAPACAudio
+        }
+    case .lpcm:
         guard audioStreamBasicDescription.mChannelsPerFrame == 4 else {
             throw AmbiMuxError.invalidChannelCount(
                 count: Int(audioStreamBasicDescription.mChannelsPerFrame))
