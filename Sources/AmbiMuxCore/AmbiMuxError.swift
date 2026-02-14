@@ -1,10 +1,6 @@
 import Foundation
 
 enum AmbiMuxError: Error, LocalizedError {
-    // File related errors
-    case audioFileNotFound(path: String)
-    case videoFileNotFound(path: String)
-
     // Audio validation errors
     case noAudioTracksFound
     case invalidChannelCount(count: Int)
@@ -19,14 +15,11 @@ enum AmbiMuxError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .audioFileNotFound(let path):
-            return "Audio file not found: \(path)"
-        case .videoFileNotFound(let path):
-            return "Video file not found: \(path)"
         case .noAudioTracksFound:
             return "No audio tracks found in the audio file"
         case .invalidChannelCount(let count):
-            return "Audio file must have \(AmbisonicsOrder.allowedChannelCounts.map(String.init).joined(separator: ", ")) channels for B-format Ambisonics. Current channels: \(count)"
+            return
+                "Audio file must have \(AmbisonicsOrder.allowedChannelCounts.map(String.init).joined(separator: ", ")) channels for B-format Ambisonics. Current channels: \(count)"
         case .expectedAPACAudio:
             return "Audio file must be APAC-encoded"
         case .couldNotGetAudioStreamDescription:
