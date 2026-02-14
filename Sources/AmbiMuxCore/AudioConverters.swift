@@ -249,6 +249,8 @@ func convertVideoWithAudioToMOV(
     if let fallbackAudioInput {
         fallbackAudioInput.languageCode = "und"
         fallbackAudioInput.extendedLanguageTag = "und"
+        // Mark output tracks as enabled true and then false for fallback audio input
+        fallbackAudioInput.marksOutputTrackAsEnabled = true
         fallbackAudioInput.marksOutputTrackAsEnabled = false  // Fallback is disabled by default
 
         // Add track association: ambisonics track has fallback as its alternate
