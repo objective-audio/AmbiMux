@@ -15,18 +15,14 @@ nonisolated func validateAudioFile(audioPath: String, audioMode: AudioInputMode)
     let formatDescriptions = try await audioTrack.load(.formatDescriptions)
     let audioFormat = formatDescriptions[0]
     guard
-        let audioStreamBasicDescriptionPtr = CMAudioFormatDescriptionGetStreamBasicDescription(
-            audioFormat)
+        let audioStreamBasicDescription = audioFormat.audioStreamBasicDescription
     else {
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
-    let audioStreamBasicDescription = audioStreamBasicDescriptionPtr.pointee
-
-    let formatID = audioStreamBasicDescription.mFormatID
 
     switch audioMode {
     case .apac:
-        guard formatID == kAudioFormatAPAC else {
+        guard audioStreamBasicDescription.mFormatID == kAudioFormatAPAC else {
             throw AmbiMuxError.expectedAPACAudio
         }
     case .lpcm:

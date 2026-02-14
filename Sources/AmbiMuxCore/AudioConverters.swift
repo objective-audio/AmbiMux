@@ -4,49 +4,75 @@ import CoreMedia
 import Foundation
 import os
 
-// Process video and audio and output to MOV file
-nonisolated func convertVideoWithAudioToMOV(
-    audioPath: String,
-    audioMode: AudioInputMode,
-    videoPath: String,
-    outputPath: String
-) async throws {
-    let audioURL = URL(fileURLWithPath: audioPath)
-    let videoURL = URL(fileURLWithPath: videoPath)
-    let outputURL = URL(fileURLWithPath: outputPath)
-    // Create AVURLAsset for audio file
-    let audioAsset = AVURLAsset(url: audioURL)
+private struct AudioTrackPipeline: Sendable {
+    let reader: AVAssetReader
+    let readerOutput: AVAssetReaderTrackOutput
+    let writerInput: AVAssetWriterInput
+}
 
-    // Create AVURLAsset for video file
-    let videoAsset = AVURLAsset(url: videoURL)
+private struct VideoTrackPipeline: Sendable {
+    let reader: AVAssetReader
+    let readerOutput: AVAssetReaderTrackOutput
+    let writerInput: AVAssetWriterInput
+}
 
-    // Get audio track
+private struct FallbackAudioTrackPipeline: Sendable {
+    let readerOutput: AVAssetReaderTrackOutput
+    let writerInput: AVAssetWriterInput
+}
+
+@MainActor
+private func makeFallbackAudioPipelineIfPresent(
+    videoAsset: AVURLAsset,
+    videoReader: AVAssetReader
+) async throws -> FallbackAudioTrackPipeline? {
+    let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
+    guard let audioTrack = audioTracks.first else {
+        return nil  // 音声トラックがなければnilを返す
+    }
+
+    let formatDescriptions = try await audioTrack.load(.formatDescriptions)
+    guard let formatDescription = formatDescriptions.first else {
+        return nil
+    }
+
+    let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+    videoReader.add(audioReaderOutput)
+
+    let audioWriterInput = AVAssetWriterInput(
+        mediaType: .audio,
+        outputSettings: nil,  // パススルー
+        sourceFormatHint: formatDescription
+    )
+    audioWriterInput.expectsMediaDataInRealTime = false
+
+    return FallbackAudioTrackPipeline(
+        readerOutput: audioReaderOutput,
+        writerInput: audioWriterInput
+    )
+}
+
+@MainActor
+private func makeAmbisonicsAudioPipeline(
+    audioAsset: AVURLAsset,
+    audioMode: AudioInputMode
+) async throws -> AudioTrackPipeline {
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
     guard let audioTrack = audioTracks.first else {
         throw AmbiMuxError.audioTrackNotFound
     }
 
-    // Get video track
-    let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
-    guard let videoTrack = videoTracks.first else {
-        throw AmbiMuxError.videoTrackNotFound
-    }
-
-    // Do not use audio tracks from video file
-
-    // Get input format information
     let formatDescriptions = try await audioTrack.load(.formatDescriptions)
     guard let formatDescription = formatDescriptions.first else {
         throw AmbiMuxError.couldNotRetrieveFormatInformation
     }
-
-    guard
-        let audioStreamBasicDescription = formatDescription.audioStreamBasicDescription
-    else {
+    guard let audioStreamBasicDescription = formatDescription.audioStreamBasicDescription else {
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
+
     let sampleRate = audioStreamBasicDescription.mSampleRate
     let channelCount = Int(audioStreamBasicDescription.mChannelsPerFrame)
+
     let isAPAC: Bool
     switch audioMode {
     case .apac:
@@ -55,24 +81,20 @@ nonisolated func convertVideoWithAudioToMOV(
         isAPAC = false
     }
 
-    // Create AVAssetReader
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
-    let videoAssetReader = try AVAssetReader(asset: videoAsset)
 
-    // Create AVAssetReaderTrackOutput
     // For APAC, read in original format (avoid re-encoding)
     let audioReaderOutput: AVAssetReaderTrackOutput
     if isAPAC {
-        // Setting outputSettings to nil reads in original format (APAC)
         audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     } else {
-        // For LPCM mode, convert to LinearPCM
         guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
             throw AmbiMuxError.invalidChannelCount(count: channelCount)
         }
         let ambisonicsLayout = AVAudioChannelLayout(
             layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
-                | AudioChannelLayoutTag(ambisonicsOrder.channelCount))!
+                | AudioChannelLayoutTag(ambisonicsOrder.channelCount)
+        )!
         let layoutData = Data(
             bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
         let outputSettings: [String: Any] = [
@@ -84,30 +106,22 @@ nonisolated func convertVideoWithAudioToMOV(
     }
     audioAssetReader.add(audioReaderOutput)
 
-    // Create AVAssetReaderTrackOutput for video
-    let videoReaderOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-    videoAssetReader.add(videoReaderOutput)
-
-    // Create AVAssetWriter
-    let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
-
-    // Create AVAssetWriterInput
-    // For APAC, write in original format (avoid re-encoding)
+    // Writer input
     let audioInput: AVAssetWriterInput
     if isAPAC {
-        // Set outputSettings to nil and inherit original format info via sourceFormatHint
         audioInput = AVAssetWriterInput(
             mediaType: .audio,
             outputSettings: nil,
-            sourceFormatHint: formatDescription)
+            sourceFormatHint: formatDescription
+        )
     } else {
-        // For LPCM mode, encode to APAC
         guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
             throw AmbiMuxError.invalidChannelCount(count: channelCount)
         }
         let ambisonicsLayout = AVAudioChannelLayout(
             layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
-                | AudioChannelLayoutTag(ambisonicsOrder.channelCount))!
+                | AudioChannelLayoutTag(ambisonicsOrder.channelCount)
+        )!
         let layoutData = Data(
             bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
         let writerAudioSettings: [String: Any] = [
@@ -125,69 +139,169 @@ nonisolated func convertVideoWithAudioToMOV(
     }
     audioInput.expectsMediaDataInRealTime = false
 
-    // Create AVAssetWriterInput for video
+    return AudioTrackPipeline(
+        reader: audioAssetReader,
+        readerOutput: audioReaderOutput,
+        writerInput: audioInput
+    )
+}
+
+@MainActor
+private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrackPipeline {
+    let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
+    guard let videoTrack = videoTracks.first else {
+        throw AmbiMuxError.videoTrackNotFound
+    }
+
+    let videoAssetReader = try AVAssetReader(asset: videoAsset)
+    let videoReaderOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+    videoAssetReader.add(videoReaderOutput)
+
     let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil)
     videoInput.expectsMediaDataInRealTime = false
+
+    return VideoTrackPipeline(
+        reader: videoAssetReader,
+        readerOutput: videoReaderOutput,
+        writerInput: videoInput
+    )
+}
+
+@MainActor
+private func pump(
+    writerInput: AVAssetWriterInput,
+    readerOutput: AVAssetReaderOutput,
+    queueLabel: String,
+    qos: DispatchQoS,
+    finishedFlag: OSAllocatedUnfairLock<Bool>
+) {
+    let queue = DispatchQueue(label: queueLabel, qos: qos)
+
+    let writerInputRef = UncheckedSendableRef(writerInput)
+    let readerOutputRef = UncheckedSendableRef(readerOutput)
+    writerInput.requestMediaDataWhenReady(on: queue) {
+        let writerInput = writerInputRef.value
+        let readerOutput = readerOutputRef.value
+
+        while writerInput.isReadyForMoreMediaData && !(finishedFlag.withLock { $0 }) {
+            if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
+                writerInput.append(sampleBuffer)
+            } else {
+                writerInput.markAsFinished()
+                finishedFlag.withLock { $0 = true }
+            }
+        }
+    }
+}
+
+// Process video and audio and output to MOV file
+@MainActor
+func convertVideoWithAudioToMOV(
+    audioPath: String,
+    audioMode: AudioInputMode,
+    videoPath: String,
+    outputPath: String
+) async throws {
+    let audioURL = URL(fileURLWithPath: audioPath)
+    let videoURL = URL(fileURLWithPath: videoPath)
+    let outputURL = URL(fileURLWithPath: outputPath)
+    // Create AVURLAsset for audio file
+    let audioAsset = AVURLAsset(url: audioURL)
+
+    // Create AVURLAsset for video file
+    let videoAsset = AVURLAsset(url: videoURL)
+
+    // Pipelines (refactored for future multiple audio tracks)
+    let videoPipeline = try await makeVideoPipeline(videoAsset: videoAsset)
+    let ambisonicsAudioPipeline = try await makeAmbisonicsAudioPipeline(
+        audioAsset: audioAsset,
+        audioMode: audioMode
+    )
+    // 映像ファイルの音声トラックをフォールバック用に抽出（存在する場合）
+    // ビデオと同じreaderを使用する
+    let fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
+        videoAsset: videoAsset,
+        videoReader: videoPipeline.reader
+    )
+
+    // Create AVAssetWriter
+    let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
+    let videoInput = videoPipeline.writerInput
+    let ambisonicsAudioInput = ambisonicsAudioPipeline.writerInput
+    let fallbackAudioInput = fallbackAudioPipeline?.writerInput
 
     if assetWriter.canAdd(videoInput) {
         assetWriter.add(videoInput)
     }
+    if assetWriter.canAdd(ambisonicsAudioInput) {
+        assetWriter.add(ambisonicsAudioInput)
+    }
+    if let fallbackAudioInput, assetWriter.canAdd(fallbackAudioInput) {
+        assetWriter.add(fallbackAudioInput)
+    }
 
-    if assetWriter.canAdd(audioInput) {
-        assetWriter.add(audioInput)
+    // Configure track metadata for proper fallback behavior
+    // The ambisonics track is the primary track, fallback is the alternate
+    ambisonicsAudioInput.languageCode = "und"
+    ambisonicsAudioInput.extendedLanguageTag = "und"
+    ambisonicsAudioInput.marksOutputTrackAsEnabled = true  // Primary track is enabled
+
+    if let fallbackAudioInput {
+        fallbackAudioInput.languageCode = "und"
+        fallbackAudioInput.extendedLanguageTag = "und"
+        fallbackAudioInput.marksOutputTrackAsEnabled = false  // Fallback is disabled by default
+
+        // Add track association: ambisonics track has fallback as its alternate
+        let associationType = AVAssetTrack.AssociationType.audioFallback.rawValue
+        if ambisonicsAudioInput.canAddTrackAssociation(
+            withTrackOf: fallbackAudioInput, type: associationType)
+        {
+            ambisonicsAudioInput.addTrackAssociation(
+                withTrackOf: fallbackAudioInput, type: associationType)
+        }
     }
 
     // Start reading and writing
     assetWriter.startWriting()
     assetWriter.startSession(atSourceTime: .zero)
-    videoAssetReader.startReading()
-    audioAssetReader.startReading()
+    videoPipeline.reader.startReading()
+    ambisonicsAudioPipeline.reader.startReading()
 
     let audioFinished = OSAllocatedUnfairLock(initialState: false)
     let videoFinished = OSAllocatedUnfairLock(initialState: false)
+    let fallbackFinished = OSAllocatedUnfairLock(initialState: fallbackAudioPipeline == nil)
 
-    // Create Serial Queue for each Input
-    let audioQueue = DispatchQueue(label: "jp.objective-audio.ambimux.audio", qos: .userInitiated)
-    let videoQueue = DispatchQueue(label: "jp.objective-audio.ambimux.video", qos: .userInitiated)
-
-    // Read and write video data asynchronously
-    let videoInputRef = UncheckedSendableRef(videoInput)
-    let videoReaderOutputRef = UncheckedSendableRef(videoReaderOutput)
-    videoInput.requestMediaDataWhenReady(on: videoQueue) {
-        let videoInput = videoInputRef.value
-        let videoReaderOutput = videoReaderOutputRef.value
-
-        while videoInput.isReadyForMoreMediaData && !(videoFinished.withLock { $0 }) {
-            if let sampleBuffer = videoReaderOutput.copyNextSampleBuffer() {
-                videoInput.append(sampleBuffer)
-            } else {
-                videoInput.markAsFinished()
-                videoFinished.withLock { $0 = true }
-            }
-        }
-    }
-
-    // Read and write audio data asynchronously
-    let audioInputRef = UncheckedSendableRef(audioInput)
-    let audioReaderOutputRef = UncheckedSendableRef(audioReaderOutput)
-    audioInput.requestMediaDataWhenReady(on: audioQueue) {
-        let audioInput = audioInputRef.value
-        let audioReaderOutput = audioReaderOutputRef.value
-
-        while audioInput.isReadyForMoreMediaData && !(audioFinished.withLock { $0 }) {
-            if let sampleBuffer = audioReaderOutput.copyNextSampleBuffer() {
-                audioInput.append(sampleBuffer)
-            } else {
-                audioInput.markAsFinished()
-                audioFinished.withLock { $0 = true }
-            }
-        }
+    pump(
+        writerInput: videoInput,
+        readerOutput: videoPipeline.readerOutput,
+        queueLabel: "jp.objective-audio.ambimux.video",
+        qos: .userInitiated,
+        finishedFlag: videoFinished
+    )
+    pump(
+        writerInput: ambisonicsAudioInput,
+        readerOutput: ambisonicsAudioPipeline.readerOutput,
+        queueLabel: "jp.objective-audio.ambimux.audio.ambisonics",
+        qos: .userInitiated,
+        finishedFlag: audioFinished
+    )
+    if let fallbackAudioPipeline, let fallbackAudioInput {
+        pump(
+            writerInput: fallbackAudioInput,
+            readerOutput: fallbackAudioPipeline.readerOutput,
+            queueLabel: "jp.objective-audio.ambimux.audio.fallback",
+            qos: .userInitiated,
+            finishedFlag: fallbackFinished
+        )
     }
 
     // Wait for async processing using Task
     try await Task {
         // Wait until all processing is complete
-        while !(audioFinished.withLock { $0 }) || !(videoFinished.withLock { $0 }) {
+        while !(audioFinished.withLock { $0 })
+            || !(videoFinished.withLock { $0 })
+            || !(fallbackFinished.withLock { $0 })
+        {
             try await Task.sleep(for: .milliseconds(10))
         }
     }.value

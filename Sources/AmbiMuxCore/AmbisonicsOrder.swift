@@ -20,4 +20,3 @@ public nonisolated enum AmbisonicsOrder: Int, CaseIterable, Sendable {
         Self.allCases.map(\.channelCount).sorted()
     }
 }
-
