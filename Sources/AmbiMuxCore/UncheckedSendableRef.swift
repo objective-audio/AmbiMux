@@ -9,4 +9,3 @@ final nonisolated class UncheckedSendableRef<T>: @unchecked Sendable {
         self.value = value
     }
 }
-
