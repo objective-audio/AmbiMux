@@ -1,25 +1,26 @@
 # Examples: mux-apac
 
-## Example 1: work/ の2ファイルを指定して多重化
+## Example 1: 単一ペアの一括変換
 
-入力:
-- Video: `work/sources/video.mov`
-- Audio(APAC): `work/sources/audio_apac.mp4`
+入力（`work/sources/`）:
+- `video.mov`
+- `video_apac.mp4`
 
-出力:
-- `work/export/video_ambimux.mov`
+出力（`work/export/`）:
+- `video_ambimux.mov`
 
-コマンド:
+## Example 2: 複数 `.mov` を一括変換
 
-```bash
-.build/release/ambimux \
-  --apac work/sources/audio_apac.mp4 \
-  --video work/sources/video.mov \
-  --output work/export/video_ambimux.mov
-```
+入力（`work/sources/`）:
+- `2026_0211_nicopri.mov` → `2026_0211_nicopri_apac00000000.mp4`（前方一致）
+- `2026_0212_demo.mov` → `2026_0212_demo_audio.mp4`（前方一致）
+- `test.mov` → （該当なし）
 
-## Example 2: 複数候補がある場合（選択→出力名を決める）
+処理:
+1. `2026_0211_nicopri.mov` + `2026_0211_nicopri_apac00000000.mp4` → `work/export/2026_0211_nicopri_ambimux.mov`
+2. `2026_0212_demo.mov` + `2026_0212_demo_audio.mp4` → `work/export/2026_0212_demo_ambimux.mov`
+3. `test.mov` → スキップ（警告: ペアが無い）
 
-1. `work/sources/` を一覧し、`*.mov` を video候補、`*.mp4` を audio候補として列挙する。
-2. ユーザーに video/audio をそれぞれ1つずつ選ばせる。
-3. 出力は `work/export/<videoBaseName>_ambimux.mov` をデフォルトにする（上書き防止で `--output` を明示）。
+最終サマリ:
+- 成功: 2件
+- スキップ: 1件（`test.mov`）

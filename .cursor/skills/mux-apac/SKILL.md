@@ -1,13 +1,13 @@
 ---
 name: mux-apac
-description: Mux or replace APAC (Apple Positional Audio Codec) spatial audio from an .mp4 into a .mov video using AmbiMux, reading inputs from work/sources/ and writing the output .mov to work/export/. Use when the user mentions ambimux, APAC, spatial audio, Vision Pro, work folder, mux, embedding, or replacing audio in MOV.
+description: Batch convert all .mov videos in work/sources/ by auto-pairing each with a prefix-matching APAC .mp4 audio file, then mux them into work/export/. Use when the user mentions batch mux, ambimux, APAC, spatial audio, Vision Pro, work folder, or processing multiple MOV files.
 ---
 
 # AmbiMux: work/ の MOV + APAC MP4 を1本に多重化
 
 ## 目的
 
-このリポジトリの `AmbiMux` CLI（`ambimux`）を使い、`work/sources/` 内の **映像（.mov）** と **APAC音声（.mp4）** を入力にして、音声差し替え済みの **1本の `.mov`** を `work/export/` に書き出す。
+このリポジトリの `AmbiMux` CLI（`ambimux`）を使い、`work/sources/` 内の **全 `.mov`** に対し、**ファイル名が前方一致する `.mp4`（APAC音声）** を自動ペアリングして、音声差し替え済みの `.mov` を `work/export/` へ一括変換する。
 
 ## 前提
 
@@ -15,22 +15,20 @@ description: Mux or replace APAC (Apple Positional Audio Codec) spatial audio fr
 - `--apac` 入力は **APAC** である必要がある（APACでない場合は `expectedAPACAudio` が発生）。
 - 出力は常に `.mov`。既存ファイルがある場合は衝突回避のためユニーク名が付くことがある。
 
-## ワークフロー（毎回、入力を選ばせる）
+## ワークフロー（全 mov を自動ペアリング→一括変換）
 
-### 1) `work/sources/` の候補を収集
+### 1) `work/sources/` の `.mov` を収集
 
-- `work/sources/` を一覧して、候補ファイルを集める。
-  - **video候補**: `*.mov`（必要なら `*.mp4` も候補に含めてよい）
-  - **audio候補**: `*.mp4`（APACを想定）
+- `work/sources/*.mov` を全て収集する。
 
-候補が1つずつに確定できない場合は、ユーザーに選択させる。
+### 2) 各 `.mov` に対し、前方一致する `.mp4` をペアリング
 
-### 2) ユーザーに video / audio を選ばせる
+各 `.mov` に対して次のルールで `.mp4` を探す。
 
-`AskQuestion` を使い、次を1つずつ選択させる。
-
-- **video**: 変換対象の動画（例: `work/xxxx.mov`）
-- **audio**: 付けたいAPAC音声（例: `work/xxxx.mp4`）
+- **ルール**: `<movのベース名>` で始まる `.mp4` を `work/sources/` から探す。
+- 例: `video_abc.mov` なら `video_abc*.mp4`（`video_abc_apac00000000.mp4` など）が対象。
+- 複数候補がある場合は最初の1つを使う（または警告して全ペアを列挙）。
+- ペアが無い `.mov` はスキップして警告。
 
 ### 3) ビルド（必要な場合のみ）
 
@@ -40,29 +38,33 @@ description: Mux or replace APAC (Apple Positional Audio Codec) spatial audio fr
 swift build -c release
 ```
 
-### 4) 出力パスを決める（上書き防止で `--output` を明示）
+### 4) 各ペアに対して変換を実行
 
-デフォルトは次を推奨する。
-
-- `work/export/<videoBaseName>_ambimux.mov`
-
-例: `work/export/video_ambimux.mov`
-
-### 5) 変換コマンドを実行
+各 `.mov` とペアの `.mp4` に対し、次のコマンドを実行する。
 
 ```bash
 .build/release/ambimux \
-  --apac "work/sources/<audio>.mp4" \
-  --video "work/sources/<video>.mov" \
-  --output "work/export/<videoBaseName>_ambimux.mov"
+  --apac "work/sources/<movBaseName>_*.mp4" \
+  --video "work/sources/<mov>" \
+  --output "work/export/<movBaseName>_ambimux.mov"
 ```
 
-### 6) 成功確認
+出力名は `<movのベース名>_ambimux.mov` とする。
+
+### 5) 成功確認（各変換ごと）
 
 - 標準出力に次が出ることを確認する。
   - `Conversion completed: ...`
   - `Output file verification completed`
 - `work/export/` 内に出力 `.mov` が存在することを確認する。
+
+### 6) 全体サマリを表示
+
+全 `.mov` の処理が終わったら、次を表示する。
+
+- 成功した変換数
+- スキップした `.mov`（ペアが無かった）のリスト
+- 失敗した変換のリスト（エラーがあれば）
 
 ## フォルダが無い場合
 
@@ -74,12 +76,22 @@ mkdir -p work/sources work/export
 
 ## 失敗時の最小切り分け
 
+- **ペアが見つからない**:
+  - `.mov` に対して前方一致する `.mp4` が `work/sources/` に無い → スキップして警告。
 - `expectedAPACAudio`:
   - 入力の `--apac` mp4 がAPACではない。`--apac` ではコピーできないため、APACのソースを用意するか、別フロー（例: `--lpcm`）を検討する。
 - `noAudioTracksFound` / `audioTrackNotFound`:
   - 音声ファイルに音声トラックが無い、または読み取れない。
 - `videoTrackNotFound`:
   - 動画ファイルにビデオトラックが無い、または読み取れない。
+
+## ペアリング例
+
+| `.mov`              | 前方一致する `.mp4` 候補                      | ペア結果                                     |
+|---------------------|-----------------------------------------------|----------------------------------------------|
+| `video_abc.mov`     | `video_abc_apac00000000.mp4`                  | ✅ ペア成立                                  |
+| `test.mov`          | `test_audio.mp4`, `test2.mp4`                | ✅ `test_audio.mp4` を使用（最初の候補）     |
+| `demo.mov`          | （該当なし）                                  | ❌ スキップ（警告表示）                      |
 
 ## 例
 
