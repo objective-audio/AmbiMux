@@ -255,11 +255,11 @@ func convertVideoWithAudioToMOV(
 
         // Add track association: ambisonics track has fallback as its alternate
         let associationType = AVAssetTrack.AssociationType.audioFallback.rawValue
-        if ambisonicsAudioInput.canAddTrackAssociation(
-            withTrackOf: fallbackAudioInput, type: associationType)
+        if fallbackAudioInput.canAddTrackAssociation(
+            withTrackOf: ambisonicsAudioInput, type: associationType)
         {
-            ambisonicsAudioInput.addTrackAssociation(
-                withTrackOf: fallbackAudioInput, type: associationType)
+            fallbackAudioInput.addTrackAssociation(
+                withTrackOf: ambisonicsAudioInput, type: associationType)
         }
     }
 
