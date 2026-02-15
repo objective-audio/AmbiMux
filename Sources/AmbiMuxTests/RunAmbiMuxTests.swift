@@ -96,12 +96,12 @@ struct RunAmbiMuxTests {
         let track1 = audioTracks[0]
         let formatDesc1 = try await track1.load(.formatDescriptions)
         guard let formatDescription1 = formatDesc1.first,
-            let asbdPtr1 = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription1)
+            let asbdPtr1 = formatDescription1.audioStreamBasicDescription
         else {
             Issue.record("Could not get format description for track 1")
             return
         }
-        let channelCount1 = Int(asbdPtr1.pointee.mChannelsPerFrame)
+        let channelCount1 = Int(asbdPtr1.mChannelsPerFrame)
         #expect(
             channelCount1 == 4, "Track 1 should be ambisonics with 4 channels, got \(channelCount1)"
         )
@@ -110,12 +110,12 @@ struct RunAmbiMuxTests {
         let track2 = audioTracks[1]
         let formatDesc2 = try await track2.load(.formatDescriptions)
         guard let formatDescription2 = formatDesc2.first,
-            let asbdPtr2 = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription2)
+            let asbdPtr2 = formatDescription2.audioStreamBasicDescription
         else {
             Issue.record("Could not get format description for track 2")
             return
         }
-        let channelCount2 = Int(asbdPtr2.pointee.mChannelsPerFrame)
+        let channelCount2 = Int(asbdPtr2.mChannelsPerFrame)
         #expect(
             channelCount2 == 2,
             "Track 2 should be stereo fallback with 2 channels, got \(channelCount2)")
