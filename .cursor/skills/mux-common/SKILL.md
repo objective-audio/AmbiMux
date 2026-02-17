@@ -39,18 +39,17 @@ find work/sources -name "*.mov" -type f | sort
 - その `.mov` をスキップ
 - 警告を表示
 
-### 3) ビルド（必要な場合のみ）
+### 3) ビルド
 
-`.build/release/ambimux` が無い（または古い）場合のみ、リポジトリルートでビルドします。
+リポジトリルートで必ずビルドを実行します。
 
 ```bash
 swift build -c release
 ```
 
-**ビルドの確認:**
-```bash
-test -f .build/release/ambimux && echo "exists" || echo "not found"
-```
+**ビルド完了の確認:**
+- `Build complete!` が出力される
+- `.build/release/ambimux` が存在する
 
 ### 4) 各ペアに対して変換を実行
 
