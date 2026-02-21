@@ -77,7 +77,7 @@ private func makeAmbisonicsAudioPipeline(
     switch audioMode {
     case .apac:
         isAPAC = true
-    case .lpcm:
+    case .lpcm, .embeddedLpcm:
         isAPAC = false
     }
 
@@ -218,11 +218,18 @@ func convertVideoWithAudioToMOV(
         audioMode: audioMode
     )
     // 映像ファイルの音声トラックをフォールバック用に抽出（存在する場合）
+    // .embeddedLpcm の場合は映像内オーディオをAmbisonicsトラックとして使用しているため、フォールバックは追加しない
     // ビデオと同じreaderを使用する
-    let fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
-        videoAsset: videoAsset,
-        videoReader: videoPipeline.reader
-    )
+    let fallbackAudioPipeline: FallbackAudioTrackPipeline?
+    switch audioMode {
+    case .embeddedLpcm:
+        fallbackAudioPipeline = nil
+    case .apac, .lpcm:
+        fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
+            videoAsset: videoAsset,
+            videoReader: videoPipeline.reader
+        )
+    }
 
     // Create AVAssetWriter
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)

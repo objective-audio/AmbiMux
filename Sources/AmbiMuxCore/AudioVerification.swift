@@ -25,7 +25,7 @@ nonisolated func validateAudioFile(audioPath: String, audioMode: AudioInputMode)
         guard audioStreamBasicDescription.mFormatID == kAudioFormatAPAC else {
             throw AmbiMuxError.expectedAPACAudio
         }
-    case .lpcm:
+    case .lpcm, .embeddedLpcm:
         let channels = Int(audioStreamBasicDescription.mChannelsPerFrame)
         guard AmbisonicsOrder(channelCount: channels) != nil else {
             throw AmbiMuxError.invalidChannelCount(
