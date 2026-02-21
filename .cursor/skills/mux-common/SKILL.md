@@ -174,5 +174,6 @@ work/
 
 - **[mux-apac](../mux-apac/SKILL.md)**: APAC圧縮済みMP4ファイルを使用
 - **[mux-lpcm](../mux-lpcm/SKILL.md)**: LPCM非圧縮WAV/AIFFファイルを使用
+- **[mux-embedded](../mux-embedded/SKILL.md)**: 映像ファイルに埋め込まれたLPCMオーディオを使用
 
 各スキルは、このスキルの共通ワークフローに加えて、形式固有の設定とエラーハンドリングを提供します。
