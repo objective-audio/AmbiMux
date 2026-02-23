@@ -21,7 +21,6 @@ private struct FallbackAudioTrackPipeline: Sendable {
     let writerInput: AVAssetWriterInput
 }
 
-@MainActor
 private func makeFallbackAudioPipelineIfPresent(
     videoAsset: AVURLAsset,
     videoReader: AVAssetReader
@@ -52,7 +51,6 @@ private func makeFallbackAudioPipelineIfPresent(
     )
 }
 
-@MainActor
 private func makeAmbisonicsAudioPipeline(
     audioAsset: AVURLAsset,
     outputAudioFormat: AudioOutputFormat
@@ -118,7 +116,6 @@ private func makeAmbisonicsAudioPipeline(
     )
 }
 
-@MainActor
 private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL) async throws -> URL {
     let tempURL = outputDirectory
         .appendingPathComponent(UUID().uuidString)
@@ -214,7 +211,6 @@ private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL)
     return tempURL
 }
 
-@MainActor
 private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrackPipeline {
     let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
     guard let videoTrack = videoTracks.first else {
@@ -235,7 +231,6 @@ private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrac
     )
 }
 
-@MainActor
 private func pump(
     writerInput: AVAssetWriterInput,
     readerOutput: AVAssetReaderOutput,
@@ -263,7 +258,6 @@ private func pump(
 }
 
 // Process video and audio and output to MOV file
-@MainActor
 func convertVideoWithAudioToMOV(
     audioPath: String,
     audioMode: AudioInputMode,
