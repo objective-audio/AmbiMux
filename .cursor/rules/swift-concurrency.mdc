@@ -1,0 +1,32 @@
+---
+description: Swift concurrency conventions for AmbiMux
+globs: **/*.swift
+alwaysApply: false
+---
+
+# Swift Concurrency Conventions
+
+All targets in `Package.swift` set `.defaultIsolation(MainActor.self)`.
+
+## @MainActor annotation
+
+- Do NOT add `@MainActor` to types, functions, or properties — it is already implied by default isolation.
+- Only add `@MainActor` when you need to **explicitly document** an isolation boundary for clarity (rare).
+
+## nonisolated
+
+- Use `nonisolated` to opt out of MainActor isolation (e.g., for functions that are safe to call from any context).
+
+## Examples
+
+```swift
+// ❌ BAD — redundant
+@MainActor
+private func makeVideoPipeline(...) async throws { ... }
+
+// ✅ GOOD — default isolation already covers this
+private func makeVideoPipeline(...) async throws { ... }
+
+// ✅ GOOD — explicitly opting out
+nonisolated func detectAudioInputMode(...) async throws { ... }
+```
