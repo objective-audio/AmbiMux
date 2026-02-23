@@ -1,11 +1,11 @@
 ---
 name: mux-common
-description: Common workflow and utilities for batch audio muxing with AmbiMux. This is a base skill referenced by format-specific skills like mux-apac and mux-lpcm. Not intended to be used directly.
+description: Common workflow and utilities for batch audio muxing with AmbiMux. This is a base skill referenced by format-specific skills like mux-audio and mux-embedded. Not intended to be used directly.
 ---
 
 # AmbiMux: 共通ワークフローとユーティリティ
 
-このスキルは、`mux-apac`、`mux-lpcm`などの形式固有スキルから参照される共通部分を定義します。
+このスキルは、`mux-audio`、`mux-embedded` などの形式固有スキルから参照される共通部分を定義します。
 このスキルを直接使用せず、形式固有のスキルを使用してください。
 
 ## 共通ワークフロー
@@ -54,13 +54,13 @@ swift build -c release
 ### 4) 各ペアに対して変換を実行
 
 形式固有のスキルで実装されます。
-- `mux-apac`: `--apac` オプションを使用
-- `mux-lpcm`: `--lpcm` オプションを使用（サンドボックスなし）
+- `mux-audio`: `--audio` オプションを使用（APAC / LPCM 自動判定、サンドボックスなし）
+- `mux-embedded`: `--audio` オプションなし（`--video` のみ、サンドボックスなし）
 
 **基本コマンド形式:**
 ```bash
 .build/release/ambimux \
-  --{apac|lpcm} "work/sources/<audio>" \
+  --audio "work/sources/<audio>" \
   --video "work/sources/<mov>" \
   --output "work/export/<movBaseName>_ambimux.mov"
 ```
@@ -172,8 +172,7 @@ work/
 
 このスキルは以下の形式固有スキルから参照されます:
 
-- **[mux-apac](../mux-apac/SKILL.md)**: APAC圧縮済みMP4ファイルを使用
-- **[mux-lpcm](../mux-lpcm/SKILL.md)**: LPCM非圧縮WAV/AIFFファイルを使用
+- **[mux-audio](../mux-audio/SKILL.md)**: オーディオファイル（APAC / LPCM 自動判定）を使用
 - **[mux-embedded](../mux-embedded/SKILL.md)**: 映像ファイルに埋め込まれたLPCMオーディオを使用
 
 各スキルは、このスキルの共通ワークフローに加えて、形式固有の設定とエラーハンドリングを提供します。
