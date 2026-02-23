@@ -150,10 +150,9 @@ private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL)
 
     let sampleRate = min(asbd.mSampleRate, 48000.0)
 
-    // LPCM ソース: AVChannelLayoutKey を指定せずチャンネルマトリクス変換を回避する。
-    // APAC ソース: AVChannelLayoutKey を指定してデコード出力レイアウトを明示する。
-    let isSourceAPAC = asbd.mFormatID == kAudioFormatAPAC
-    var readerOutputSettings: [String: Any] = [
+    // AVChannelLayoutKey を指定せずチャンネルマトリクス変換を回避する。
+    // ソースのチャンネルレイアウト（UseChannelDescriptions + HOA ラベル）のまま PCM を取り出す。
+    let readerOutputSettings: [String: Any] = [
         AVFormatIDKey: kAudioFormatLinearPCM,
         AVSampleRateKey: sampleRate,
         AVNumberOfChannelsKey: channelCount,
@@ -162,10 +161,6 @@ private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL)
         AVLinearPCMIsBigEndianKey: false,
         AVLinearPCMIsNonInterleaved: false,
     ]
-    // TODO: 削除しても問題ないか検証する
-    if isSourceAPAC {
-        readerOutputSettings[AVChannelLayoutKey] = layoutData
-    }
 
     // Writer は HOA_ACN_SN3D でタグ付けする（LPCM writer は PCM データを変換しない）。
     // これにより後段の APAC エンコーダーがレイアウト変換なしで HOA として処理できる。
@@ -284,26 +279,21 @@ func convertVideoWithAudioToMOV(
     // Create AVURLAsset for video file
     let videoAsset = AVURLAsset(url: videoURL)
 
-    // 実効出力フォーマット: 未指定の場合は入力に合わせる
+    // APAC 入力は常に APAC 出力に固定する。lpcm/embeddedLpcm は指定に従う（デフォルト: .lpcm）
     let effectiveOutputFormat: AudioOutputFormat
-    if let outputAudioFormat {
-        effectiveOutputFormat = outputAudioFormat
-    } else {
-        switch audioMode {
-        case .lpcm, .embeddedLpcm:
-            effectiveOutputFormat = .lpcm
-        case .apac:
-            effectiveOutputFormat = .apac
-        }
+    switch audioMode {
+    case .lpcm, .embeddedLpcm:
+        effectiveOutputFormat = outputAudioFormat ?? .lpcm
+    case .apac:
+        effectiveOutputFormat = .apac
     }
 
     // lpcm・embeddedLpcm: 常に temp CAF 経由でチャンネルマトリクス変換を回避する
-    // apac → lpcm: temp CAF 経由で APAC をデコードする
-    // apac → apac: パススルー
+    // apac: パススルー
     var tempCAFURL: URL?
     let audioAsset: AVURLAsset
-    switch (audioMode, effectiveOutputFormat) {
-    case (.lpcm, _), (.embeddedLpcm, _):
+    switch audioMode {
+    case .lpcm, .embeddedLpcm:
         let sourceAsset = audioMode == .embeddedLpcm
             ? videoAsset
             : AVURLAsset(url: audioURL)
@@ -311,12 +301,7 @@ func convertVideoWithAudioToMOV(
             audioAsset: sourceAsset, outputDirectory: outputDirectory)
         tempCAFURL = tempURL
         audioAsset = AVURLAsset(url: tempURL)
-    case (.apac, .lpcm):
-        let tempURL = try await extractAudioToTempCAF(
-            audioAsset: AVURLAsset(url: audioURL), outputDirectory: outputDirectory)
-        tempCAFURL = tempURL
-        audioAsset = AVURLAsset(url: tempURL)
-    case (.apac, .apac):
+    case .apac:
         audioAsset = AVURLAsset(url: audioURL)
     }
     defer { tempCAFURL.map { try? FileManager.default.removeItem(at: $0) } }
