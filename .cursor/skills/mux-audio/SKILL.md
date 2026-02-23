@@ -1,9 +1,9 @@
 ---
 name: mux-audio
-description: Batch convert all .mov videos in work/sources/ by auto-pairing each with a prefix-matching audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected), then mux them into work/export/. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, work folder, or processing multiple MOV files with an audio file.
+description: Batch convert all .mov videos in workspace/sources/ by auto-pairing each with a prefix-matching audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected), then mux them into workspace/export/. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, or processing multiple MOV files with an audio file.
 ---
 
-# AmbiMux: work/ の MOV + オーディオファイルを1本に多重化
+# AmbiMux: workspace/ の MOV + オーディオファイルを1本に多重化
 
 ## 概要
 
@@ -12,7 +12,7 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 
 ## 目的
 
-`work/sources/` 内の **全 `.mov`** に対し、**ファイル名が前方一致するオーディオファイル**（`.mp4` / `.wav` / `.aiff`）を自動ペアリングして、音声差し替え済みの `.mov` を `work/export/` へ一括変換する。オーディオ形式（APAC / LPCM）は自動判定される。
+`workspace/sources/` 内の **全 `.mov`** に対し、**ファイル名が前方一致するオーディオファイル**（`.mp4` / `.wav` / `.aiff`）を自動ペアリングして、音声差し替え済みの `.mov` を `workspace/export/` へ一括変換する。オーディオ形式（APAC / LPCM）は自動判定される。
 
 ## 前提条件
 
@@ -26,7 +26,7 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 各 `.mov` に対して次の優先順位でオーディオファイルを探します。
 
 - **優先順位**: `.mp4` → `.wav` → `.aiff`
-- **ルール**: `<movのベース名>` で始まるファイルを `work/sources/` から探す
+- **ルール**: `<movのベース名>` で始まるファイルを `workspace/sources/` から探す
 - 例: `video_abc.mov` なら `video_abc*.mp4`、`video_abc*.wav`、`video_abc*.aiff` の順に探す
 
 **ペアリング例:**
@@ -44,9 +44,9 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 
 ```bash
 .build/release/ambimux \
-  --audio "work/sources/<audio>" \
-  --video "work/sources/<mov>" \
-  --output "work/export/<movBaseName>_ambimux.mov"
+  --audio "workspace/sources/<audio>" \
+  --video "workspace/sources/<mov>" \
+  --output "workspace/export/<movBaseName>_ambimux.mov"
 ```
 
 **特徴:**
@@ -86,7 +86,7 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 
 詳細は [mux-common](../mux-common/SKILL.md) を参照してください:
 
-1. `work/sources/` の `.mov` を収集
+1. `workspace/sources/` の `.mov` を収集
 2. 各 `.mov` に対してオーディオファイルをペアリング（上記のペアリングルール）
 3. ビルド（必要な場合のみ）
 4. 各ペアに対して変換を実行（上記のコマンド、**サンドボックスなし**）

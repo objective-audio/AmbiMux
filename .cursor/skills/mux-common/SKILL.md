@@ -10,12 +10,12 @@ description: Common workflow and utilities for batch audio muxing with AmbiMux. 
 
 ## 共通ワークフロー
 
-### 1) `work/sources/` の `.mov` を収集
+### 1) `workspace/sources/` の `.mov` を収集
 
-`work/sources/` ディレクトリ内の全ての `.mov` ファイルを収集します。
+`workspace/sources/` ディレクトリ内の全ての `.mov` ファイルを収集します。
 
 ```bash
-find work/sources -name "*.mov" -type f | sort
+find workspace/sources -name "*.mov" -type f | sort
 ```
 
 ### 2) 各 `.mov` に対してオーディオファイルをペアリング
@@ -23,7 +23,7 @@ find work/sources -name "*.mov" -type f | sort
 各 `.mov` ファイルに対して、ファイル名が前方一致するオーディオファイルを探します。
 
 **ペアリングの基本ルール:**
-- `<movのベース名>` で始まるオーディオファイルを `work/sources/` から探す
+- `<movのベース名>` で始まるオーディオファイルを `workspace/sources/` から探す
 - 例: `video_abc.mov` のベース名は `video_abc`
 - 前方一致: `video_abc*.{拡張子}` がマッチ
   - `video_abc.wav` ✅
@@ -60,9 +60,9 @@ swift build -c release
 **基本コマンド形式:**
 ```bash
 .build/release/ambimux \
-  --audio "work/sources/<audio>" \
-  --video "work/sources/<mov>" \
-  --output "work/export/<movBaseName>_ambimux.mov"
+  --audio "workspace/sources/<audio>" \
+  --video "workspace/sources/<mov>" \
+  --output "workspace/export/<movBaseName>_ambimux.mov"
 ```
 
 **出力ファイル名:**
@@ -79,7 +79,7 @@ swift build -c release
 
 **ファイルの存在確認:**
 ```bash
-ls -lh work/export/<output>.mov
+ls -lh workspace/export/<output>.mov
 ```
 
 **出力内容の確認:**
@@ -126,22 +126,22 @@ ls -lh work/export/<output>.mov
 
 ### フォルダが無い場合
 
-`work/sources/` と `work/export/` が無い場合は作成します。
+`workspace/sources/` と `workspace/export/` が無い場合は作成します。
 
 ```bash
-mkdir -p work/sources work/export
+mkdir -p workspace/sources workspace/export
 ```
 
 ### フォルダ構造
 
 ```
-work/
+workspace/
 ├── sources/          # 入力ファイル（.mov + オーディオファイル）
 └── export/           # 出力ファイル（変換済み .mov）
 ```
 
 **注意:**
-- `work/` は `.gitignore` されており、変換用の入出力置き場として使える
+- `workspace/` は `.gitignore` されており、変換用の入出力置き場として使える
 - 出力は常に `.mov` 形式
 
 ## 共通エラーハンドリング
@@ -149,7 +149,7 @@ work/
 ### ペアリングエラー
 
 **ペアが見つからない:**
-- `.mov` に対して前方一致するオーディオファイルが `work/sources/` に無い
+- `.mov` に対して前方一致するオーディオファイルが `workspace/sources/` に無い
 - 対処: スキップして警告を表示
 
 ### オーディオトラックエラー

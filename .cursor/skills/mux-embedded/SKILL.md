@@ -1,9 +1,9 @@
 ---
 name: mux-embedded
-description: Batch convert all .mov videos in work/sources/ that contain embedded HOA LPCM audio (4/9/16ch), encoding it to APAC and muxing into work/export/. Use when the user mentions batch mux without external audio, embedded audio, or processing MOV files that already contain spatial audio tracks.
+description: Batch convert all .mov videos in workspace/sources/ that contain embedded HOA LPCM audio (4/9/16ch), encoding it to APAC and muxing into workspace/export/. Use when the user mentions batch mux without external audio, embedded audio, or processing MOV files that already contain spatial audio tracks.
 ---
 
-# AmbiMux: work/ の MOV の埋め込みオーディオを HOA として多重化
+# AmbiMux: workspace/ の MOV の埋め込みオーディオを HOA として多重化
 
 ## 概要
 
@@ -12,7 +12,7 @@ description: Batch convert all .mov videos in work/sources/ that contain embedde
 
 ## 目的
 
-`work/sources/` 内の **全 `.mov`** に対し、映像ファイルに埋め込まれたオーディオトラックを HOA Ambisonics として APAC エンコードし、`work/export/` へ一括変換する。外部オーディオファイルは不要。
+`workspace/sources/` 内の **全 `.mov`** に対し、映像ファイルに埋め込まれたオーディオトラックを HOA Ambisonics として APAC エンコードし、`workspace/export/` へ一括変換する。外部オーディオファイルは不要。
 
 ## 埋め込みオーディオ固有の前提条件
 
@@ -47,8 +47,8 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 
 ```bash
 .build/release/ambimux \
-  --video "work/sources/<mov>" \
-  --output "work/export/<movBaseName>_ambimux.mov"
+  --video "workspace/sources/<mov>" \
+  --output "workspace/export/<movBaseName>_ambimux.mov"
 ```
 
 **特徴:**
@@ -87,7 +87,7 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 
 詳細は [mux-common](../mux-common/SKILL.md) を参照してください:
 
-1. `work/sources/` の `.mov` を収集
+1. `workspace/sources/` の `.mov` を収集
 2. 各 `.mov` の埋め込みオーディオのチャンネル数を確認（上記の埋め込みオーディオ固有ルール）
 3. ビルド（必要な場合のみ）
 4. 各 `.mov` に対して変換を実行（上記の埋め込みオーディオ固有コマンド、**サンドボックスなし**）
