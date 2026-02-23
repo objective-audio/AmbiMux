@@ -2,8 +2,8 @@ import AVFoundation
 import CoreAudioTypes
 import Foundation
 
-// Validate audio file
-nonisolated func validateAudioFile(audioPath: String, audioMode: AudioInputMode) async throws {
+// Detect audio input mode from file format
+nonisolated func detectAudioInputMode(audioPath: String) async throws -> AudioInputMode {
     let audioAsset = AVURLAsset(url: URL(fileURLWithPath: audioPath))
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
 
@@ -11,28 +11,44 @@ nonisolated func validateAudioFile(audioPath: String, audioMode: AudioInputMode)
         throw AmbiMuxError.noAudioTracksFound
     }
 
-    let audioTrack = audioTracks[0]
-    let formatDescriptions = try await audioTrack.load(.formatDescriptions)
-    let audioFormat = formatDescriptions[0]
-    guard
-        let audioStreamBasicDescription = audioFormat.audioStreamBasicDescription
+    let formatDescriptions = try await audioTracks[0].load(.formatDescriptions)
+    guard let formatDescription = formatDescriptions.first,
+        let asbd = formatDescription.audioStreamBasicDescription
     else {
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
 
-    switch audioMode {
-    case .apac:
-        guard audioStreamBasicDescription.mFormatID == kAudioFormatAPAC else {
-            throw AmbiMuxError.expectedAPACAudio
-        }
-    case .lpcm, .embeddedLpcm:
-        let channels = Int(audioStreamBasicDescription.mChannelsPerFrame)
-        guard AmbisonicsOrder(channelCount: channels) != nil else {
-            throw AmbiMuxError.invalidChannelCount(
-                count: channels)
-        }
+    if asbd.mFormatID == kAudioFormatAPAC {
+        return .apac
     }
 
+    let channels = Int(asbd.mChannelsPerFrame)
+    guard AmbisonicsOrder(channelCount: channels) != nil else {
+        throw AmbiMuxError.invalidChannelCount(count: channels)
+    }
+    return .lpcm
+}
+
+// Validate embedded LPCM audio channel count in a video file
+nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
+    let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
+    let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
+
+    guard !audioTracks.isEmpty else {
+        throw AmbiMuxError.noAudioTracksFound
+    }
+
+    let formatDescriptions = try await audioTracks[0].load(.formatDescriptions)
+    guard let formatDescription = formatDescriptions.first,
+        let asbd = formatDescription.audioStreamBasicDescription
+    else {
+        throw AmbiMuxError.couldNotGetAudioStreamDescription
+    }
+
+    let channels = Int(asbd.mChannelsPerFrame)
+    guard AmbisonicsOrder(channelCount: channels) != nil else {
+        throw AmbiMuxError.invalidChannelCount(count: channels)
+    }
 }
 
 // Display detailed information of output file

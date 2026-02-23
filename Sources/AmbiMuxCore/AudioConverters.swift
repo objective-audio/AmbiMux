@@ -21,7 +21,6 @@ private struct FallbackAudioTrackPipeline: Sendable {
     let writerInput: AVAssetWriterInput
 }
 
-@MainActor
 private func makeFallbackAudioPipelineIfPresent(
     videoAsset: AVURLAsset,
     videoReader: AVAssetReader
@@ -52,10 +51,9 @@ private func makeFallbackAudioPipelineIfPresent(
     )
 }
 
-@MainActor
 private func makeAmbisonicsAudioPipeline(
     audioAsset: AVURLAsset,
-    audioMode: AudioInputMode
+    outputAudioFormat: AudioOutputFormat
 ) async throws -> AudioTrackPipeline {
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
     guard let audioTrack = audioTracks.first else {
@@ -66,34 +64,21 @@ private func makeAmbisonicsAudioPipeline(
     guard let formatDescription = formatDescriptions.first else {
         throw AmbiMuxError.couldNotRetrieveFormatInformation
     }
-    guard let audioStreamBasicDescription = formatDescription.audioStreamBasicDescription else {
-        throw AmbiMuxError.couldNotGetAudioStreamDescription
-    }
-
-    let sampleRate = audioStreamBasicDescription.mSampleRate
-    let channelCount = Int(audioStreamBasicDescription.mChannelsPerFrame)
-
-    let isAPAC: Bool
-    switch audioMode {
-    case .apac:
-        isAPAC = true
-    case .lpcm, .embeddedLpcm:
-        isAPAC = false
-    }
 
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
     let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     audioAssetReader.add(audioReaderOutput)
 
-    // Writer input
+    // ソースが LPCM（temp CAF 経由）かつ APAC 出力を要求された場合のみエンコード設定を適用する。
+    // それ以外はパススルー（LPCM→LPCM / APAC→APAC）。
     let audioInput: AVAssetWriterInput
-    if isAPAC {
-        audioInput = AVAssetWriterInput(
-            mediaType: .audio,
-            outputSettings: nil,
-            sourceFormatHint: formatDescription
-        )
-    } else {
+    let isSourceAPAC =
+        formatDescription.audioStreamBasicDescription?.mFormatID == kAudioFormatAPAC
+    if outputAudioFormat == .apac && !isSourceAPAC {
+        guard let asbd = formatDescription.audioStreamBasicDescription else {
+            throw AmbiMuxError.couldNotGetAudioStreamDescription
+        }
+        let channelCount = Int(asbd.mChannelsPerFrame)
         guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
             throw AmbiMuxError.invalidChannelCount(count: channelCount)
         }
@@ -105,7 +90,7 @@ private func makeAmbisonicsAudioPipeline(
             bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
         let writerAudioSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatAPAC,
-            AVSampleRateKey: min(sampleRate, 48000),
+            AVSampleRateKey: min(asbd.mSampleRate, 48000),
             AVNumberOfChannelsKey: ambisonicsOrder.channelCount,
             AVChannelLayoutKey: layoutData,
             AVEncoderBitRateKey: 384000,
@@ -115,6 +100,12 @@ private func makeAmbisonicsAudioPipeline(
             AVEncoderASPFrequencyKey: 75,
         ]
         audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerAudioSettings)
+    } else {
+        audioInput = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: nil,
+            sourceFormatHint: formatDescription
+        )
     }
     audioInput.expectsMediaDataInRealTime = false
 
@@ -125,7 +116,6 @@ private func makeAmbisonicsAudioPipeline(
     )
 }
 
-@MainActor
 private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL) async throws -> URL {
     let tempURL = outputDirectory
         .appendingPathComponent(UUID().uuidString)
@@ -157,7 +147,7 @@ private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL)
 
     let sampleRate = min(asbd.mSampleRate, 48000.0)
 
-    // Reader は AVChannelLayoutKey を指定せず、チャンネルマトリクス変換を回避する。
+    // AVChannelLayoutKey を指定せずチャンネルマトリクス変換を回避する。
     // ソースのチャンネルレイアウト（UseChannelDescriptions + HOA ラベル）のまま PCM を取り出す。
     let readerOutputSettings: [String: Any] = [
         AVFormatIDKey: kAudioFormatLinearPCM,
@@ -221,7 +211,6 @@ private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL)
     return tempURL
 }
 
-@MainActor
 private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrackPipeline {
     let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
     guard let videoTrack = videoTracks.first else {
@@ -242,7 +231,6 @@ private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrac
     )
 }
 
-@MainActor
 private func pump(
     writerInput: AVAssetWriterInput,
     readerOutput: AVAssetReaderOutput,
@@ -270,12 +258,12 @@ private func pump(
 }
 
 // Process video and audio and output to MOV file
-@MainActor
 func convertVideoWithAudioToMOV(
     audioPath: String,
     audioMode: AudioInputMode,
     videoPath: String,
-    outputPath: String
+    outputPath: String,
+    outputAudioFormat: AudioOutputFormat? = nil
 ) async throws {
     let audioURL = URL(fileURLWithPath: audioPath)
     let videoURL = URL(fileURLWithPath: videoPath)
@@ -285,11 +273,19 @@ func convertVideoWithAudioToMOV(
     // Create AVURLAsset for video file
     let videoAsset = AVURLAsset(url: videoURL)
 
-    // lpcm・embeddedLpcm の場合は一時 CAF（LE Float32 / max 48kHz）を経由して
-    // チャンネルマトリクス変換を回避してから APAC エンコードする
+    // APAC 入力は常に APAC 出力に固定する。lpcm/embeddedLpcm は指定に従う（デフォルト: .lpcm）
+    let effectiveOutputFormat: AudioOutputFormat
+    switch audioMode {
+    case .lpcm, .embeddedLpcm:
+        effectiveOutputFormat = outputAudioFormat ?? .lpcm
+    case .apac:
+        effectiveOutputFormat = .apac
+    }
+
+    // lpcm・embeddedLpcm: 常に temp CAF 経由でチャンネルマトリクス変換を回避する
+    // apac: パススルー
     var tempCAFURL: URL?
     let audioAsset: AVURLAsset
-    let effectiveAudioMode: AudioInputMode
     switch audioMode {
     case .lpcm, .embeddedLpcm:
         let sourceAsset = audioMode == .embeddedLpcm
@@ -299,10 +295,8 @@ func convertVideoWithAudioToMOV(
             audioAsset: sourceAsset, outputDirectory: outputDirectory)
         tempCAFURL = tempURL
         audioAsset = AVURLAsset(url: tempURL)
-        effectiveAudioMode = .lpcm
     case .apac:
         audioAsset = AVURLAsset(url: audioURL)
-        effectiveAudioMode = .apac
     }
     defer { tempCAFURL.map { try? FileManager.default.removeItem(at: $0) } }
 
@@ -310,7 +304,7 @@ func convertVideoWithAudioToMOV(
     let videoPipeline = try await makeVideoPipeline(videoAsset: videoAsset)
     let ambisonicsAudioPipeline = try await makeAmbisonicsAudioPipeline(
         audioAsset: audioAsset,
-        audioMode: effectiveAudioMode
+        outputAudioFormat: effectiveOutputFormat
     )
     // 映像ファイルの音声トラックをフォールバック用に抽出（存在する場合）
     // .embeddedLpcm の場合は映像内オーディオをAmbisonicsトラックとして使用しているため、フォールバックは追加しない

@@ -1,12 +1,15 @@
 import Foundation
 
-enum AmbiMuxError: Error, LocalizedError {
+enum AmbiMuxError: Error, LocalizedError, Equatable {
     // Audio validation errors
     case noAudioTracksFound
     case invalidChannelCount(count: Int)
     case expectedAPACAudio
     case couldNotGetAudioStreamDescription
     case couldNotRetrieveFormatInformation
+
+    // Option combination errors
+    case invalidOutputFormatForAPACInput
 
     // Conversion errors
     case audioTrackNotFound
@@ -26,6 +29,8 @@ enum AmbiMuxError: Error, LocalizedError {
             return "Could not get audio stream basic description"
         case .couldNotRetrieveFormatInformation:
             return "Could not retrieve format information"
+        case .invalidOutputFormatForAPACInput:
+            return "--audio-output lpcm cannot be used with APAC input"
         case .audioTrackNotFound:
             return "Audio track not found"
         case .videoTrackNotFound:
