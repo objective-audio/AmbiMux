@@ -15,7 +15,7 @@ struct RunAmbiMuxTests {
         // Get resource file paths
         let audioPath = try TestResourceHelper.resourcePath(
             for: "test_48k_4ch", withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         // Execute with explicit output path
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
@@ -40,7 +40,7 @@ struct RunAmbiMuxTests {
 
         // Get resource file paths (APAC-encoded audio)
         let audioPath = try TestResourceHelper.resourcePath(for: "test_apac", withExtension: "mp4")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         // Execute with explicit output path
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
@@ -58,6 +58,43 @@ struct RunAmbiMuxTests {
         #expect(outputExists, "Output file should be created at \(outputPath)")
     }
 
+    @Test func testRunAmbiMuxSuccessWithEmbeddedLpcm() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        // embeddedLpcm: audioPath と videoPath は同じファイル
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_4ch", withExtension: "mov")
+
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("runAmbi_embedded_output.mov").path
+
+        try await runAmbiMux(
+            audioPath: videoPath,
+            audioMode: .embeddedLpcm,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
+
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Output file should be created at \(outputPath)")
+
+        // 出力ファイルの音声トラックを検証
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
+
+        // embeddedLpcm はフォールバックなし → 1トラックのみ
+        #expect(audioTracks.count == 1, "Output should have 1 audio track (ambisonics only)")
+
+        let formatDesc = try await audioTracks[0].load(.formatDescriptions)
+        guard let fd = formatDesc.first,
+            let asbdPtr = fd.audioStreamBasicDescription
+        else {
+            Issue.record("Could not get format description")
+            return
+        }
+        #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Audio track should be 4ch APAC")
+    }
+
     @Test func testRunAmbiMuxSuccessWithVideoAudioFallback() async throws {
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()
@@ -65,7 +102,7 @@ struct RunAmbiMuxTests {
 
         let ambisonicsAudioPath = try TestResourceHelper.resourcePath(
             for: "test_48k_4ch", withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
             "runAmbi_fallback_output.mov"

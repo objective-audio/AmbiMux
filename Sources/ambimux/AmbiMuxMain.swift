@@ -58,8 +58,15 @@ struct AmbiMuxMain: AsyncParsableCommand {
                 videoPath: videoPath,
                 outputPath: outputFilePath
             )
-        default:
-            throw ValidationError("Exactly one of --apac or --lpcm is required")
+        case (nil, nil):
+            try await runAmbiMux(
+                audioPath: videoPath,
+                audioMode: .embeddedLpcm,
+                videoPath: videoPath,
+                outputPath: outputFilePath
+            )
+        case (_, _):
+            throw ValidationError("--apac and --lpcm cannot be specified at the same time")
         }
     }
 }
