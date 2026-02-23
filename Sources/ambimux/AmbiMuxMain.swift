@@ -10,20 +10,14 @@ struct AmbiMuxMain: AsyncParsableCommand {
         commandName: "ambimux",
         abstract: "Mux or replace spatial audio into MOV videos",
         discussion:
-            "Embeds or replaces spatial audio in MOV videos for Apple Vision Pro. Supports LPCM and APAC audio. Use --audio-output to select the output audio format (default: matches input)."
+            "Embeds or replaces spatial audio in MOV videos for Apple Vision Pro. Supports LPCM and APAC audio (auto-detected). Use --audio-output to select the output audio format for LPCM input (default: lpcm)."
     )
 
     @Option(
-        name: [.customLong("apac")],
-        help: "APAC-encoded audio file path (copied without re-encoding by default)"
+        name: [.customShort("a"), .customLong("audio")],
+        help: "Spatial audio file path (APAC or LPCM, auto-detected). Omit to use embedded audio from the video file."
     )
-    var apacAudioFilePath: String?
-
-    @Option(
-        name: [.customLong("lpcm")],
-        help: "4-channel B-format Ambisonics audio file path (written as LPCM by default)"
-    )
-    var lpcmAudioFilePath: String?
+    var audioFilePath: String?
 
     @Option(
         name: [.customShort("v"), .customLong("video")],
@@ -48,36 +42,11 @@ struct AmbiMuxMain: AsyncParsableCommand {
             throw ValidationError("--video is required")
         }
 
-        let apacPath = apacAudioFilePath
-        let lpcmPath = lpcmAudioFilePath
-
-        switch (apacPath, lpcmPath) {
-        case (let apac?, nil):
-            try await runAmbiMux(
-                audioPath: apac,
-                audioMode: .apac,
-                videoPath: videoPath,
-                outputPath: outputFilePath,
-                outputAudioFormat: audioOutputFormat
-            )
-        case (nil, let lpcm?):
-            try await runAmbiMux(
-                audioPath: lpcm,
-                audioMode: .lpcm,
-                videoPath: videoPath,
-                outputPath: outputFilePath,
-                outputAudioFormat: audioOutputFormat
-            )
-        case (nil, nil):
-            try await runAmbiMux(
-                audioPath: videoPath,
-                audioMode: .embeddedLpcm,
-                videoPath: videoPath,
-                outputPath: outputFilePath,
-                outputAudioFormat: audioOutputFormat
-            )
-        case (_, _):
-            throw ValidationError("--apac and --lpcm cannot be specified at the same time")
-        }
+        try await runAmbiMux(
+            audioPath: audioFilePath,
+            videoPath: videoPath,
+            outputPath: outputFilePath,
+            outputAudioFormat: audioOutputFormat
+        )
     }
 }

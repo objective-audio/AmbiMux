@@ -16,7 +16,7 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 
 ## APAC固有の前提条件
 
-- `--apac` 入力は **APAC圧縮済み** である必要がある（APACでない場合は `expectedAPACAudio` が発生）
+- `--audio` で指定したファイルが **APAC圧縮済み** である必要がある（APACでない場合は `expectedAPACAudio` が発生）
 - APACファイルはコピーのみで再エンコードしない
 - サンドボックス内で実行可能
 
@@ -40,13 +40,13 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 
 ```bash
 .build/release/ambimux \
-  --apac "work/sources/<audio>.mp4" \
+  --audio "work/sources/<audio>.mp4" \
   --video "work/sources/<mov>" \
   --output "work/export/<movBaseName>_ambimux.mov"
 ```
 
 **特徴:**
-- `--apac` オプションを使用
+- `--audio` オプションを使用（APAC/LPCM は自動判定）
 - APACファイルはコピーのみ（再エンコードなし）
 - サンドボックス内で実行可能
 
@@ -55,7 +55,7 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 ### `expectedAPACAudio`
 
 **原因:**
-- 入力の `--apac` mp4 がAPAC形式ではない
+- 入力の `--audio` mp4 がAPAC形式ではない
 
 **対処:**
 - APACエンコード済みのソースを用意する

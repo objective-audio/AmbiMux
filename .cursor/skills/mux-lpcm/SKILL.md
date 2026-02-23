@@ -16,7 +16,7 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 
 ## LPCM固有の前提条件
 
-- `--lpcm` 入力は **4チャンネル B-format Ambisonics（LPCM）** である必要がある
+- `--audio` で指定したファイルは **4チャンネル B-format Ambisonics（LPCM）** である必要がある
 - LPCMからAPACへエンコードする（再エンコード）
 - **APACエンコーダーはサンドボックス内では動作しない**ため、全てのコマンドは `required_permissions: ["all"]` を指定してサンドボックスなしで実行する
 - 対応フォーマット: `.wav`, `.aiff`
@@ -44,13 +44,13 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 
 ```bash
 .build/release/ambimux \
-  --lpcm "work/sources/<audio>.wav" \
+  --audio "work/sources/<audio>.wav" \
   --video "work/sources/<mov>" \
   --output "work/export/<movBaseName>_ambimux.mov"
 ```
 
 **特徴:**
-- `--lpcm` オプションを使用
+- `--audio` オプションを使用（APAC/LPCM は自動判定）
 - LPCMからAPACへエンコード（再エンコード）
 - **サンドボックスなし（`required_permissions: ["all"]`）で実行必須**
 
@@ -59,7 +59,7 @@ description: Batch convert all .mov videos in work/sources/ by auto-pairing each
 ### `invalidChannelCount`
 
 **原因:**
-- 入力の `--lpcm` ファイルが4チャンネルではない
+- 入力の `--audio` ファイルが4チャンネルではない
 
 **対処:**
 - 4チャンネル B-format Ambisonics のソースを用意する

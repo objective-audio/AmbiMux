@@ -23,7 +23,6 @@ struct RunAmbiMuxTests {
         ).path
         try await runAmbiMux(
             audioPath: audioPath,
-            audioMode: .lpcm,
             videoPath: videoPath,
             outputPath: outputPath
         )
@@ -48,7 +47,6 @@ struct RunAmbiMuxTests {
         ).path
         try await runAmbiMux(
             audioPath: audioPath,
-            audioMode: .apac,
             videoPath: videoPath,
             outputPath: outputPath
         )
@@ -62,15 +60,14 @@ struct RunAmbiMuxTests {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
-        // embeddedLpcm: audioPath と videoPath は同じファイル
+        // embeddedLpcm: audioPath は nil（映像ファイルの埋め込みオーディオを使用）
         let videoPath = try TestResourceHelper.resourcePath(for: "test_4ch", withExtension: "mov")
 
         let outputPath = URL(fileURLWithPath: cachePath)
             .appendingPathComponent("runAmbi_embedded_output.mov").path
 
         try await runAmbiMux(
-            audioPath: videoPath,
-            audioMode: .embeddedLpcm,
+            audioPath: nil,
             videoPath: videoPath,
             outputPath: outputPath
         )
@@ -107,7 +104,6 @@ struct RunAmbiMuxTests {
         await #expect(throws: AmbiMuxError.invalidOutputFormatForAPACInput) {
             try await runAmbiMux(
                 audioPath: audioPath,
-                audioMode: .apac,
                 videoPath: videoPath,
                 outputPath: outputPath,
                 outputAudioFormat: .lpcm
@@ -130,7 +126,6 @@ struct RunAmbiMuxTests {
 
         try await runAmbiMux(
             audioPath: ambisonicsAudioPath,
-            audioMode: .lpcm,
             videoPath: videoPath,
             outputPath: outputPath
         )

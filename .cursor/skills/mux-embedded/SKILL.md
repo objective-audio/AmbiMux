@@ -16,7 +16,7 @@ description: Batch convert all .mov videos in work/sources/ that contain embedde
 
 ## 埋め込みオーディオ固有の前提条件
 
-- 外部オーディオファイルは不要（`--apac` / `--lpcm` オプションは使用しない）
+- 外部オーディオファイルは不要（`--audio` オプションは使用しない）
 - 映像ファイルの埋め込みオーディオが **4・9・16チャンネルの LPCM** である必要がある
 - LPCMからAPACへエンコードする（再エンコード）
 - **APACエンコーダーはサンドボックス内では動作しない**ため、全てのコマンドは `required_permissions: ["all"]` を指定してサンドボックスなしで実行する
@@ -52,7 +52,7 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 ```
 
 **特徴:**
-- `--apac` / `--lpcm` オプションなし（`--video` のみ）
+- `--audio` オプションなし（`--video` のみ）
 - 埋め込み LPCM から APAC へエンコード（再エンコード）
 - **サンドボックスなし（`required_permissions: ["all"]`）で実行必須**
 - フォールバックトラックなし（Audio track は APAC の1本のみ）
