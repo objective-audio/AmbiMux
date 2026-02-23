@@ -88,21 +88,9 @@ private func makeAmbisonicsAudioPipeline(
     if isAPAC {
         audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     } else {
-        guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
-            throw AmbiMuxError.invalidChannelCount(count: channelCount)
-        }
-        let ambisonicsLayout = AVAudioChannelLayout(
-            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
-                | AudioChannelLayoutTag(ambisonicsOrder.channelCount)
-        )!
-        let layoutData = Data(
-            bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
-        let outputSettings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVChannelLayoutKey: layoutData,
-        ]
-        audioReaderOutput = AVAssetReaderTrackOutput(
-            track: audioTrack, outputSettings: outputSettings)
+        // 一時 CAF は HOA_ACN_SN3D タグ付きで書き出されているため、
+        // reader 側での変換指定は不要。パススルーで読み込む。
+        audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     }
     audioAssetReader.add(audioReaderOutput)
 
