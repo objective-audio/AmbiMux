@@ -82,16 +82,7 @@ private func makeAmbisonicsAudioPipeline(
     }
 
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
-
-    // For APAC, read in original format (avoid re-encoding)
-    let audioReaderOutput: AVAssetReaderTrackOutput
-    if isAPAC {
-        audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-    } else {
-        // 一時 CAF は HOA_ACN_SN3D タグ付きで書き出されているため、
-        // reader 側での変換指定は不要。パススルーで読み込む。
-        audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-    }
+    let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     audioAssetReader.add(audioReaderOutput)
 
     // Writer input
