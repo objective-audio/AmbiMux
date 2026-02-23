@@ -15,7 +15,7 @@ struct RunAmbiMuxTests {
         // Get resource file paths
         let audioPath = try TestResourceHelper.resourcePath(
             for: "test_48k_4ch", withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         // Execute with explicit output path
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
@@ -40,7 +40,7 @@ struct RunAmbiMuxTests {
 
         // Get resource file paths (APAC-encoded audio)
         let audioPath = try TestResourceHelper.resourcePath(for: "test_apac", withExtension: "mp4")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         // Execute with explicit output path
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
@@ -102,7 +102,7 @@ struct RunAmbiMuxTests {
 
         let ambisonicsAudioPath = try TestResourceHelper.resourcePath(
             for: "test_48k_4ch", withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
             "runAmbi_fallback_output.mov"

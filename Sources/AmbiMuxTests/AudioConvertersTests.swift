@@ -13,7 +13,7 @@ struct AudioConvertersTests {
         // Get resource file paths
         let audioPath = try TestResourceHelper.resourcePath(
             for: "test_48k_4ch", withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         // Generate output file path (full path specified)
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent("test_output.mov")
@@ -62,7 +62,7 @@ struct AudioConvertersTests {
 
         // Get resource file paths (APAC-encoded audio)
         let audioPath = try TestResourceHelper.resourcePath(for: "test_apac", withExtension: "mp4")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         // Generate output file path
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
@@ -117,7 +117,7 @@ struct AudioConvertersTests {
 
         // Specify non-existent audio path
         let missingAudioPath = "/this/path/does/not/exist.wav"
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
             "out_missing_audio.mov"
         ).path
@@ -176,7 +176,7 @@ struct AudioConvertersTests {
         expectedOutputRate: Double
     ) async throws {
         let audioPath = try TestResourceHelper.resourcePath(for: fileName, withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
 
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()
