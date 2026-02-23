@@ -48,10 +48,6 @@ struct AmbiMuxMain: AsyncParsableCommand {
             throw ValidationError("--video is required")
         }
 
-        if apacAudioFilePath != nil && audioOutputFormat == .lpcm {
-            throw ValidationError("--audio-output lpcm cannot be used with --apac input")
-        }
-
         let apacPath = apacAudioFilePath
         let lpcmPath = lpcmAudioFilePath
 

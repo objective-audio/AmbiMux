@@ -95,6 +95,26 @@ struct RunAmbiMuxTests {
         #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Audio track should be 4ch APAC")
     }
 
+    @Test func testRunAmbiMuxFailsWhenAPACInputWithLPCMOutput() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(for: "test_apac", withExtension: "mp4")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("should_not_be_created.mov").path
+
+        await #expect(throws: AmbiMuxError.invalidOutputFormatForAPACInput) {
+            try await runAmbiMux(
+                audioPath: audioPath,
+                audioMode: .apac,
+                videoPath: videoPath,
+                outputPath: outputPath,
+                outputAudioFormat: .lpcm
+            )
+        }
+    }
+
     @Test func testRunAmbiMuxSuccessWithVideoAudioFallback() async throws {
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()

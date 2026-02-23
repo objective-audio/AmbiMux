@@ -1,4 +1,4 @@
-public enum AudioInputMode: Sendable {
+public enum AudioInputMode: Equatable, Sendable {
     case apac
     case lpcm
     case embeddedLpcm

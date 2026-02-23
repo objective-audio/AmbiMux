@@ -10,6 +10,11 @@ nonisolated public func runAmbiMux(
 )
     async throws
 {
+    // APAC 入力に対して lpcm 出力は指定できない
+    if case .apac = audioMode, outputAudioFormat == .lpcm {
+        throw AmbiMuxError.invalidOutputFormatForAPACInput
+    }
+
     // Validate audio file
     try await validateAudioFile(audioPath: audioPath, audioMode: audioMode)
 
