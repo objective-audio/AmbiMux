@@ -10,7 +10,7 @@ description: Batch convert all .mov videos in workspace/sources/. For each MOV, 
 `workspace/sources/` 内の **全 `.mov`** に対し、以下の優先順で変換する:
 
 1. **外部オーディオが見つかった場合** — ファイル名が前方一致するオーディオファイル（`.mp4` / `.wav` / `.aiff`）を使って音声差し替え
-2. **外部オーディオが見つからない場合** — `.mov` に埋め込まれた HOA LPCM（4/9/16ch）を APAC にエンコード
+2. **外部オーディオが見つからない場合** — `.mov` に埋め込まれた HOA LPCM（4/9/16ch）を出力（デフォルトは LPCM のまま保持）
 3. **どちらも使えない場合** — スキップ（警告表示）
 
 ## 前提条件
@@ -88,7 +88,7 @@ swift build -c release
 
 - `--audio` オプションを使用（APAC / LPCM は自動判定）
 - APAC ファイルはコピーのみ（再エンコードなし）
-- LPCM ファイルは APAC へエンコード
+- LPCM ファイルはデフォルトで **LPCM のまま**出力される（`--audio-output apac` を追加すると APAC へエンコード）
 
 **外部オーディオなし・埋め込みあり（mux-embedded 相当）:**
 
@@ -99,12 +99,23 @@ swift build -c release
 ```
 
 - `--audio` オプションなし（`--video` のみ）
-- 埋め込み LPCM から APAC へエンコード
-- フォールバックトラックなし（Audio track は APAC の1本のみ）
+- 埋め込みオーディオはデフォルトで**元のフォーマットのまま**出力される（LPCM → LPCM、APAC → APAC）
+- LPCM を APAC へエンコードしたい場合は `--audio-output apac` を追加
+- フォールバックトラックなし（Audio track は1本のみ）
 
 **出力ファイル名:**
 - `<movのベース名>_ambimux.mov`
 - 既存ファイルがある場合は自動的にユニーク名が付与される（例: `_1.mov`, `_2.mov`）
+
+**出力オーディオフォーマット（`--audio-output`）:**
+
+| 入力フォーマット | デフォルト出力 | `--audio-output apac` 指定時 |
+|-----------------|---------------|------------------------------|
+| APAC            | APAC（コピー）| APAC（コピー、オプション無視）|
+| LPCM            | **LPCM**      | APAC（エンコード）           |
+
+- **出力フォーマットが LPCM でも正常動作**（バグではない）
+- APAC で書き出したい場合のみ `--audio-output apac` を追加する
 
 ### 5) 成功確認（各変換ごと）
 
