@@ -5,7 +5,8 @@ nonisolated public func runAmbiMux(
     audioPath: String,
     audioMode: AudioInputMode,
     videoPath: String,
-    outputPath: String? = nil
+    outputPath: String? = nil,
+    outputAudioFormat: AudioOutputFormat? = nil
 )
     async throws
 {
@@ -21,7 +22,8 @@ nonisolated public func runAmbiMux(
         audioPath: audioPath,
         audioMode: audioMode,
         videoPath: videoPath,
-        outputPath: finalOutputPath
+        outputPath: finalOutputPath,
+        outputAudioFormat: outputAudioFormat
     )
 
     // Verify output file
