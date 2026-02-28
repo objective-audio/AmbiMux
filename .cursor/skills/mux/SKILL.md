@@ -19,13 +19,39 @@ description: Batch convert all .mov videos in workspace/sources/. For each MOV, 
 
 ## ワークフロー
 
-### 1) `workspace/sources/` の `.mov` を収集
+### 1) フォルダ準備
+
+`workspace/sources/` と `workspace/export/` が無い場合は作成する。
+
+```bash
+mkdir -p workspace/sources workspace/export
+```
+
+### 2) 【必須】ビルド — 省略してはならない
+
+**ビルドは絶対に省略しない。** 以下のいずれの場合でも、毎回必ず実行する:
+
+- `.mov` が0件でも実行する
+- 既存の `.build/release/ambimux` があっても実行する
+- 変換対象が1件もない場合でも実行する
+
+リポジトリルートでビルドを実行する。`required_permissions: ["all"]` を指定してサンドボックスなしで実行する。
+
+```bash
+swift build -c release
+```
+
+**ビルド完了の確認:**
+- `Build complete!` が出力される
+- `.build/release/ambimux` が存在する
+
+### 3) `workspace/sources/` の `.mov` を収集
 
 ```bash
 find workspace/sources -name "*.mov" -type f | sort
 ```
 
-### 2) 各 `.mov` に対して処理モードを判定
+### 4) 各 `.mov` に対して処理モードを判定
 
 **Step A: 外部オーディオファイルを探す**
 
@@ -61,19 +87,9 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 | なし           | 4/9/16ch            | 埋め込みで変換       |
 | なし           | それ以外 / なし     | スキップ + 警告      |
 
-### 3) ビルド
+### 5) 各 `.mov` に対して変換を実行
 
-リポジトリルートで必ずビルドを実行します。
-
-```bash
-swift build -c release
-```
-
-**ビルド完了の確認:**
-- `Build complete!` が出力される
-- `.build/release/ambimux` が存在する
-
-### 4) 各 `.mov` に対して変換を実行
+**前提条件:** 必ず 2) ビルドが成功してから変換を実行する。ビルド未実行・失敗の場合は変換に進まない。
 
 **重要**: 全てのコマンドは `required_permissions: ["all"]` を指定してサンドボックスなしで実行します。
 
@@ -117,7 +133,7 @@ swift build -c release
 - **出力フォーマットが LPCM でも正常動作**（バグではない）
 - APAC で書き出したい場合のみ `--audio-output apac` を追加する
 
-### 5) 成功確認（各変換ごと）
+### 6) 成功確認（各変換ごと）
 
 **標準出力で確認:**
 - `Conversion completed: ...` が出力される
@@ -128,7 +144,7 @@ swift build -c release
 ls -lh workspace/export/<output>.mov
 ```
 
-### 6) 全体サマリを表示
+### 7) 全体サマリを表示
 
 全ての `.mov` の処理が終わったら、以下を表示します。
 
@@ -163,13 +179,7 @@ ls -lh workspace/export/<output>.mov
 
 ## フォルダ管理
 
-### フォルダが無い場合
-
-`workspace/sources/` と `workspace/export/` が無い場合は作成します。
-
-```bash
-mkdir -p workspace/sources workspace/export
-```
+フォルダ作成はワークフローの 1) で行う。
 
 ### フォルダ構造
 
