@@ -117,9 +117,12 @@ private func makeAmbisonicsAudioPipeline(
 }
 
 private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL) async throws -> URL {
-    let tempURL = outputDirectory
-        .appendingPathComponent(UUID().uuidString)
-        .appendingPathExtension("caf")
+    var tempURL: URL
+    repeat {
+        tempURL = outputDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("caf")
+    } while FileManager.default.fileExists(atPath: tempURL.path)
 
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
     guard let audioTrack = audioTracks.first else {
