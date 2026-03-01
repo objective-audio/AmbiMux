@@ -116,10 +116,17 @@ private func makeAmbisonicsAudioPipeline(
     )
 }
 
-private func extractAudioToTempCAF(audioAsset: AVURLAsset, outputDirectory: URL) async throws -> URL {
-    let tempURL = outputDirectory
-        .appendingPathComponent(UUID().uuidString)
-        .appendingPathExtension("caf")
+private func extractAudioToTempCAF(
+    audioAsset: AVURLAsset,
+    outputDirectory: URL,
+    uuidGenerator: @escaping @Sendable () -> String
+) async throws -> URL {
+    var tempURL: URL
+    repeat {
+        tempURL = outputDirectory
+            .appendingPathComponent(uuidGenerator())
+            .appendingPathExtension("caf")
+    } while FileManager.default.fileExists(atPath: tempURL.path)
 
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
     guard let audioTrack = audioTracks.first else {
@@ -263,7 +270,8 @@ func convertVideoWithAudioToMOV(
     audioMode: AudioInputMode,
     videoPath: String,
     outputPath: String,
-    outputAudioFormat: AudioOutputFormat? = nil
+    outputAudioFormat: AudioOutputFormat? = nil,
+    uuidGenerator: @escaping @Sendable () -> String = { UUID().uuidString }
 ) async throws {
     let audioURL = URL(fileURLWithPath: audioPath)
     let videoURL = URL(fileURLWithPath: videoPath)
@@ -292,7 +300,9 @@ func convertVideoWithAudioToMOV(
             ? videoAsset
             : AVURLAsset(url: audioURL)
         let tempURL = try await extractAudioToTempCAF(
-            audioAsset: sourceAsset, outputDirectory: outputDirectory)
+            audioAsset: sourceAsset,
+            outputDirectory: outputDirectory,
+            uuidGenerator: uuidGenerator)
         tempCAFURL = tempURL
         audioAsset = AVURLAsset(url: tempURL)
     case .apac:
