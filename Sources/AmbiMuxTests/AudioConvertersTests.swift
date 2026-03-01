@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 import Testing
 
 @testable import AmbiMuxCore
@@ -219,6 +220,58 @@ struct AudioConvertersTests {
 
         // Remove test directory
         try TestResourceHelper.removeTestDirectory(at: cachePath)
+    }
+
+    @Test func testTempURLRetryOnCollision() async throws {
+        // Create test directory
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        // Pre-create collision file so first UUID would collide
+        let collisionURL = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("collision-uuid")
+            .appendingPathExtension("caf")
+        try Data("collision".utf8).write(to: collisionURL)
+
+        // Mock UUID generator: first returns collision, second returns unique
+        let uuids = ["collision-uuid", "unique-id"]
+        let callCount = OSAllocatedUnfairLock(initialState: 0)
+        let uuidGenerator: @Sendable () -> String = {
+            let index = callCount.withLock { count in
+                let idx = count
+                count += 1
+                return idx
+            }
+            return uuids[index]
+        }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("test_retry_output.mov")
+            .path
+
+        // Execute conversion with mock UUID generator
+        try await convertVideoWithAudioToMOV(
+            audioPath: audioPath,
+            audioMode: .lpcm,
+            videoPath: videoPath,
+            outputPath: outputPath,
+            uuidGenerator: uuidGenerator
+        )
+
+        // Verify output file was created
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Output file should be created at \(outputPath)")
+
+        // Verify collision-uuid.caf still exists (was not overwritten; retry used different UUID)
+        let collisionExists = FileManager.default.fileExists(atPath: collisionURL.path)
+        #expect(collisionExists, "collision-uuid.caf should remain (retry should use different path)")
+
+        // Verify UUID generator was called twice (first collision, second success)
+        let finalCount = callCount.withLock { $0 }
+        #expect(finalCount == 2, "UUID generator should be called twice (actual=\(finalCount))")
     }
 
 }
