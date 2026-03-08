@@ -1,6 +1,6 @@
 ---
 name: mux
-description: Batch convert all .mov videos in workspace/sources/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise falls back to embedded HOA LPCM audio (4/9/16ch). Outputs to workspace/export/. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing multiple MOV files.
+description: Batch convert all .mov videos in workspace/sources/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise falls back to embedded HOA LPCM audio (4/9/16ch). Outputs to workspace/export/ with APAC audio. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing multiple MOV files.
 ---
 
 # AmbiMux: workspace/ の MOV を一括変換（外部オーディオ優先・埋め込みフォールバック）
@@ -10,7 +10,7 @@ description: Batch convert all .mov videos in workspace/sources/. For each MOV, 
 `workspace/sources/` 内の **全 `.mov`** に対し、以下の優先順で変換する:
 
 1. **外部オーディオが見つかった場合** — ファイル名が前方一致するオーディオファイル（`.mp4` / `.wav` / `.aiff`）を使って音声差し替え
-2. **外部オーディオが見つからない場合** — `.mov` に埋め込まれた HOA LPCM（4/9/16ch）を出力（デフォルトは LPCM のまま保持）
+2. **外部オーディオが見つからない場合** — `.mov` に埋め込まれた HOA LPCM（4/9/16ch）を **APAC** で出力
 3. **どちらも使えない場合** — スキップ（警告表示）
 
 ## 前提条件
@@ -99,39 +99,37 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 .build/release/ambimux \
   --audio "workspace/sources/<audio>" \
   --video "workspace/sources/<mov>" \
-  --output "workspace/export/<movBaseName>_ambimux.mov"
+  --output "workspace/export/<movBaseName>_ambimux.mov" \
+  --audio-output apac
 ```
 
 - `--audio` オプションを使用（APAC / LPCM は自動判定）
 - APAC ファイルはコピーのみ（再エンコードなし）
-- LPCM ファイルはデフォルトで **LPCM のまま**出力される（`--audio-output apac` を追加すると APAC へエンコード）
+- LPCM ファイルは **APAC** へエンコードして出力
 
 **外部オーディオなし・埋め込みあり（mux-embedded 相当）:**
 
 ```bash
 .build/release/ambimux \
   --video "workspace/sources/<mov>" \
-  --output "workspace/export/<movBaseName>_ambimux.mov"
+  --output "workspace/export/<movBaseName>_ambimux.mov" \
+  --audio-output apac
 ```
 
 - `--audio` オプションなし（`--video` のみ）
-- 埋め込みオーディオはデフォルトで**元のフォーマットのまま**出力される（LPCM → LPCM、APAC → APAC）
-- LPCM を APAC へエンコードしたい場合は `--audio-output apac` を追加
+- 埋め込みオーディオは **APAC** で出力（LPCM → APAC エンコード、APAC → APAC コピー）
 - フォールバックトラックなし（Audio track は1本のみ）
 
 **出力ファイル名:**
 - `<movのベース名>_ambimux.mov`
 - 既存ファイルがある場合は自動的にユニーク名が付与される（例: `_1.mov`, `_2.mov`）
 
-**出力オーディオフォーマット（`--audio-output`）:**
+**出力オーディオフォーマット（本スキルでは常に `--audio-output apac` を指定）:**
 
-| 入力フォーマット | デフォルト出力 | `--audio-output apac` 指定時 |
-|-----------------|---------------|------------------------------|
-| APAC            | APAC（コピー）| APAC（コピー、オプション無視）|
-| LPCM            | **LPCM**      | APAC（エンコード）           |
-
-- **出力フォーマットが LPCM でも正常動作**（バグではない）
-- APAC で書き出したい場合のみ `--audio-output apac` を追加する
+| 入力フォーマット | 出力 |
+|-----------------|------|
+| APAC            | APAC（コピー）|
+| LPCM            | APAC（エンコード）|
 
 ### 6) 成功確認（各変換ごと）
 
