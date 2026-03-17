@@ -1,13 +1,13 @@
 ---
 name: mux
-description: Batch convert all .mov videos in workspace/sources/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise falls back to embedded HOA LPCM audio (4/9/16ch). Outputs to workspace/export/ with APAC audio. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing multiple MOV files.
+description: Batch convert all .mov videos in workspace/mux-input/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise falls back to embedded HOA LPCM audio (4/9/16ch). Outputs to workspace/output/ with APAC audio. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing multiple MOV files.
 ---
 
 # AmbiMux: workspace/ の MOV を一括変換（外部オーディオ優先・埋め込みフォールバック）
 
 ## 目的
 
-`workspace/sources/` 内の **全 `.mov`** に対し、以下の優先順で変換する:
+`workspace/mux-input/` 内の **全 `.mov`** に対し、以下の優先順で変換する:
 
 1. **外部オーディオが見つかった場合** — ファイル名が前方一致するオーディオファイル（`.mp4` / `.wav` / `.aiff`）を使って音声差し替え
 2. **外部オーディオが見つからない場合** — `.mov` に埋め込まれた HOA LPCM（4/9/16ch）を **APAC** で出力
@@ -21,10 +21,10 @@ description: Batch convert all .mov videos in workspace/sources/. For each MOV, 
 
 ### 1) フォルダ準備
 
-`workspace/sources/` と `workspace/export/` が無い場合は作成する。
+`workspace/mux-input/` と `workspace/output/` が無い場合は作成する。
 
 ```bash
-mkdir -p workspace/sources workspace/export
+mkdir -p workspace/mux-input workspace/output
 ```
 
 ### 2) 【必須】ビルド — 省略してはならない
@@ -45,10 +45,10 @@ swift build -c release
 - `Build complete!` が出力される
 - `.build/release/ambimux` が存在する
 
-### 3) `workspace/sources/` の `.mov` を収集
+### 3) `workspace/mux-input/` の `.mov` を収集
 
 ```bash
-find workspace/sources -name "*.mov" -type f | sort
+find workspace/mux-input -name "*.mov" -type f | sort
 ```
 
 ### 4) 各 `.mov` に対して処理モードを判定
@@ -56,7 +56,7 @@ find workspace/sources -name "*.mov" -type f | sort
 **Step A: 外部オーディオファイルを探す**
 
 - **優先順位**: `.mp4` → `.wav` → `.aiff`
-- **ルール**: `<movのベース名>` で始まるファイルを `workspace/sources/` から探す
+- **ルール**: `<movのベース名>` で始まるファイルを `workspace/mux-input/` から探す
 - 例: `video_abc.mov` なら `video_abc*.mp4`、`video_abc*.wav`、`video_abc*.aiff` の順に探す
 
 **ペアリング例:**
@@ -97,9 +97,9 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 
 ```bash
 .build/release/ambimux \
-  --audio "workspace/sources/<audio>" \
-  --video "workspace/sources/<mov>" \
-  --output "workspace/export/<movBaseName>_ambimux.mov" \
+  --audio "workspace/mux-input/<audio>" \
+  --video "workspace/mux-input/<mov>" \
+  --output "workspace/output/<movBaseName>_ambimux.mov" \
   --audio-output apac
 ```
 
@@ -111,8 +111,8 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 
 ```bash
 .build/release/ambimux \
-  --video "workspace/sources/<mov>" \
-  --output "workspace/export/<movBaseName>_ambimux.mov" \
+  --video "workspace/mux-input/<mov>" \
+  --output "workspace/output/<movBaseName>_ambimux.mov" \
   --audio-output apac
 ```
 
@@ -139,7 +139,7 @@ ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
 
 **ファイルの存在確認:**
 ```bash
-ls -lh workspace/export/<output>.mov
+ls -lh workspace/output/<output>.mov
 ```
 
 ### 7) 全体サマリを表示
@@ -183,8 +183,8 @@ ls -lh workspace/export/<output>.mov
 
 ```
 workspace/
-├── sources/          # 入力ファイル（.mov + オーディオファイル）
-└── export/           # 出力ファイル（変換済み .mov）
+├── mux-input/        # 入力ファイル（.mov + オーディオファイル）
+└── output/           # 出力ファイル（変換済み .mov）
 ```
 
 **注意:**
