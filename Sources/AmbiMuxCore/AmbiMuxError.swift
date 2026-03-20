@@ -8,6 +8,7 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
     case expectedAPACAudio
     case couldNotGetAudioStreamDescription
     case couldNotRetrieveFormatInformation
+    case invalidAmbisonicsChannelLayout(detail: String)
 
     // Option combination errors
     case invalidOutputFormatForAPACInput
@@ -32,6 +33,9 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
             return "Could not get audio stream basic description"
         case .couldNotRetrieveFormatInformation:
             return "Could not retrieve format information"
+        case .invalidAmbisonicsChannelLayout(let detail):
+            return
+                "Ambisonics source uses channel descriptions but channel labels must be Discrete_0, Discrete_1, … in order. \(detail)"
         case .invalidOutputFormatForAPACInput:
             return "--audio-output lpcm cannot be used with APAC input"
         case .audioTrackNotFound:
