@@ -92,8 +92,7 @@ struct RunAmbiMuxTests {
         #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Audio track should be 4ch APAC")
     }
 
-    // 2ch/4chのオーディオは無音になってしまう。validationを実装したら有効にする。もしくは変換できるように対応する
-    @Test(.disabled()) func testRunAmbiMuxFailsWhenEmbeddedAmbiDiscreteNotFromZero() async throws {
+    @Test func testRunAmbiMuxFailsWhenEmbeddedAmbiDiscreteNotFromZero() async throws {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
@@ -111,7 +110,7 @@ struct RunAmbiMuxTests {
             )
             Issue.record("Expected invalidAmbisonicsChannelLayout")
         } catch let err as AmbiMuxError {
-            if case .invalidAmbisonicsChannelLayout = err {
+            if case .noAmbisonicsTrackFound = err {
                 return
             }
             Issue.record("Unexpected AmbiMuxError: \(err)")
