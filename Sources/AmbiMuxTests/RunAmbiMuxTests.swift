@@ -92,6 +92,7 @@ struct RunAmbiMuxTests {
         #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Audio track should be 4ch APAC")
     }
 
+    // 2ch/4chのオーディオは無音になってしまう。validationを実装したら有効にする。もしくは変換できるように対応する
     @Test(.disabled()) func testRunAmbiMuxFailsWhenEmbeddedAmbiDiscreteNotFromZero() async throws {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
