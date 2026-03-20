@@ -29,26 +29,75 @@ nonisolated func detectAudioInputMode(audioPath: String) async throws -> AudioIn
     return .lpcm
 }
 
-// Validate embedded LPCM audio channel count in a video file
-nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
-    let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
+/// 映像の音声トラックを走査し、Ambisonics とモノ/ステレオを検出する
+/// - Returns: (ambisonicsTrack, fallbackTrack) フォールバックは存在しない場合 nil
+/// - Throws: noAmbisonicsTrackFound  Ambisonics トラックが1つもない場合
+nonisolated func scanVideoAudioTracks(videoAsset: AVURLAsset) async throws -> (
+    ambisonics: AVAssetTrack, fallback: AVAssetTrack?
+) {
     let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
 
     guard !audioTracks.isEmpty else {
         throw AmbiMuxError.noAudioTracksFound
     }
 
-    let formatDescriptions = try await audioTracks[0].load(.formatDescriptions)
-    guard let formatDescription = formatDescriptions.first,
-        let asbd = formatDescription.audioStreamBasicDescription
-    else {
-        throw AmbiMuxError.couldNotGetAudioStreamDescription
+    var ambisonicsTrack: AVAssetTrack?
+    var fallbackTrack: AVAssetTrack?
+
+    for track in audioTracks {
+        let formatDescriptions = try await track.load(.formatDescriptions)
+        guard let formatDescription = formatDescriptions.first,
+            let asbd = formatDescription.audioStreamBasicDescription
+        else {
+            continue
+        }
+
+        let channels = Int(asbd.mChannelsPerFrame)
+
+        if AmbisonicsOrder(channelCount: channels) != nil {
+            if ambisonicsTrack == nil {
+                ambisonicsTrack = track
+            }
+        } else if channels == 1 || channels == 2 {
+            if fallbackTrack == nil {
+                fallbackTrack = track
+            }
+        }
     }
 
-    let channels = Int(asbd.mChannelsPerFrame)
-    guard AmbisonicsOrder(channelCount: channels) != nil else {
-        throw AmbiMuxError.invalidChannelCount(count: channels)
+    guard let ambisonics = ambisonicsTrack else {
+        throw AmbiMuxError.noAmbisonicsTrackFound
     }
+
+    return (ambisonics, fallbackTrack)
+}
+
+/// 映像の音声トラックを走査し、モノ/ステレオのトラックを検出する（apac/lpcm 用フォールバック）
+/// - Returns: 最初に見つかった 1ch/2ch トラック、なければ nil
+nonisolated func scanVideoFallbackTrack(videoAsset: AVURLAsset) async throws -> AVAssetTrack? {
+    let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
+
+    for track in audioTracks {
+        let formatDescriptions = try await track.load(.formatDescriptions)
+        guard let formatDescription = formatDescriptions.first,
+            let asbd = formatDescription.audioStreamBasicDescription
+        else {
+            continue
+        }
+
+        let channels = Int(asbd.mChannelsPerFrame)
+        if channels == 1 || channels == 2 {
+            return track
+        }
+    }
+
+    return nil
+}
+
+// Validate embedded LPCM audio: at least one Ambisonics track must exist
+nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
+    let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
+    _ = try await scanVideoAudioTracks(videoAsset: videoAsset)
 }
 
 // Display detailed information of output file

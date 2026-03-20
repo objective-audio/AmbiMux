@@ -22,14 +22,9 @@ private struct FallbackAudioTrackPipeline: Sendable {
 }
 
 private func makeFallbackAudioPipelineIfPresent(
-    videoAsset: AVURLAsset,
-    videoReader: AVAssetReader
+    videoReader: AVAssetReader,
+    fallbackTrack audioTrack: AVAssetTrack
 ) async throws -> FallbackAudioTrackPipeline? {
-    let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
-    guard let audioTrack = audioTracks.first else {
-        return nil  // 音声トラックがなければnilを返す
-    }
-
     let formatDescriptions = try await audioTrack.load(.formatDescriptions)
     guard let formatDescription = formatDescriptions.first else {
         return nil
@@ -118,6 +113,7 @@ private func makeAmbisonicsAudioPipeline(
 
 private func extractAudioToTempCAF(
     audioAsset: AVURLAsset,
+    audioTrack: AVAssetTrack,
     outputDirectory: URL,
     uuidGenerator: @escaping @Sendable () -> String
 ) async throws -> URL {
@@ -127,11 +123,6 @@ private func extractAudioToTempCAF(
             .appendingPathComponent(uuidGenerator())
             .appendingPathExtension("caf")
     } while FileManager.default.fileExists(atPath: tempURL.path)
-
-    let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
-    guard let audioTrack = audioTracks.first else {
-        throw AmbiMuxError.audioTrackNotFound
-    }
 
     let formatDescriptions = try await audioTrack.load(.formatDescriptions)
     guard let formatDescription = formatDescriptions.first else {
@@ -294,18 +285,35 @@ func convertVideoWithAudioToMOV(
     // apac: パススルー
     var tempCAFURL: URL?
     let audioAsset: AVURLAsset
+    let embeddedScanResult: (ambisonics: AVAssetTrack, fallback: AVAssetTrack?)?
+
     switch audioMode {
-    case .lpcm, .embeddedLpcm:
-        let sourceAsset = audioMode == .embeddedLpcm
-            ? videoAsset
-            : AVURLAsset(url: audioURL)
+    case .lpcm:
+        embeddedScanResult = nil
+        let sourceAsset = AVURLAsset(url: audioURL)
+        let audioTracks = try await sourceAsset.loadTracks(withMediaType: .audio)
+        guard let ambisonicsTrack = audioTracks.first else {
+            throw AmbiMuxError.audioTrackNotFound
+        }
         let tempURL = try await extractAudioToTempCAF(
             audioAsset: sourceAsset,
+            audioTrack: ambisonicsTrack,
+            outputDirectory: outputDirectory,
+            uuidGenerator: uuidGenerator)
+        tempCAFURL = tempURL
+        audioAsset = AVURLAsset(url: tempURL)
+    case .embeddedLpcm:
+        let scanResult = try await scanVideoAudioTracks(videoAsset: videoAsset)
+        embeddedScanResult = (scanResult.ambisonics, scanResult.fallback)
+        let tempURL = try await extractAudioToTempCAF(
+            audioAsset: videoAsset,
+            audioTrack: scanResult.ambisonics,
             outputDirectory: outputDirectory,
             uuidGenerator: uuidGenerator)
         tempCAFURL = tempURL
         audioAsset = AVURLAsset(url: tempURL)
     case .apac:
+        embeddedScanResult = nil
         audioAsset = AVURLAsset(url: audioURL)
     }
     defer { tempCAFURL.map { try? FileManager.default.removeItem(at: $0) } }
@@ -317,17 +325,28 @@ func convertVideoWithAudioToMOV(
         outputAudioFormat: effectiveOutputFormat
     )
     // 映像ファイルの音声トラックをフォールバック用に抽出（存在する場合）
-    // .embeddedLpcm の場合は映像内オーディオをAmbisonicsトラックとして使用しているため、フォールバックは追加しない
-    // ビデオと同じreaderを使用する
+    // .embeddedLpcm: scanVideoAudioTracks で検出したモノ/ステレオをフォールバックに使用
+    // .apac/.lpcm: scanVideoFallbackTrack で検出したモノ/ステレオをフォールバックに使用
     let fallbackAudioPipeline: FallbackAudioTrackPipeline?
     switch audioMode {
     case .embeddedLpcm:
-        fallbackAudioPipeline = nil
+        if let fallbackTrack = embeddedScanResult?.fallback {
+            fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
+                videoReader: videoPipeline.reader,
+                fallbackTrack: fallbackTrack
+            )
+        } else {
+            fallbackAudioPipeline = nil
+        }
     case .apac, .lpcm:
-        fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
-            videoAsset: videoAsset,
-            videoReader: videoPipeline.reader
-        )
+        if let fallbackTrack = try await scanVideoFallbackTrack(videoAsset: videoAsset) {
+            fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
+                videoReader: videoPipeline.reader,
+                fallbackTrack: fallbackTrack
+            )
+        } else {
+            fallbackAudioPipeline = nil
+        }
     }
 
     // Create AVAssetWriter
