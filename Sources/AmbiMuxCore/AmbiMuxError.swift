@@ -3,6 +3,7 @@ import Foundation
 enum AmbiMuxError: Error, LocalizedError, Equatable {
     // Audio validation errors
     case noAudioTracksFound
+    case noAmbisonicsTrackFound
     case invalidChannelCount(count: Int)
     case expectedAPACAudio
     case couldNotGetAudioStreamDescription
@@ -19,7 +20,9 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .noAudioTracksFound:
-            return "No audio tracks found in the audio file"
+            return "No audio tracks found in the file"
+        case .noAmbisonicsTrackFound:
+            return "No Ambisonics track (4/9/16 channels) found in the video file"
         case .invalidChannelCount(let count):
             return
                 "Audio file must have \(AmbisonicsOrder.allowedChannelCounts.map(String.init).joined(separator: ", ")) channels for B-format Ambisonics. Current channels: \(count)"
