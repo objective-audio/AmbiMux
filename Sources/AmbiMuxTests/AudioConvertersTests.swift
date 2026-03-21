@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudioTypes
 import Foundation
 import os
 import Testing
@@ -50,6 +51,18 @@ struct AudioConvertersTests {
         #expect(
             channelCount == 4,
             "Output audio should have 4 channels (actual=\(channelCount))"
+        )
+
+        var layoutSize: Int = 0
+        let channelLayoutPtr = CMAudioFormatDescriptionGetChannelLayout(
+            audioFormat, sizeOut: &layoutSize)
+        let layoutTag = try #require(
+            channelLayoutPtr?.pointee.mChannelLayoutTag,
+            "LPCM output should include channel layout"
+        )
+        #expect(
+            layoutTag & kAudioChannelLayoutTag_HOA_ACN_SN3D == kAudioChannelLayoutTag_HOA_ACN_SN3D,
+            "Ambisonics LPCM track should be tagged HOA ACN SN3D"
         )
 
         // Remove test directory
