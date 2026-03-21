@@ -20,7 +20,7 @@ bash .cursor/skills/sbs/scripts/convert-vr180.sh workspace/sbs-input workspace/m
 **Shell 実行時の必須オプション:**
 
 - `required_permissions: ["all"]` — avconvert はサンドボックス内で失敗するため必須
-- `timeout: 3600000` — 60分（複数ファイル対応）
+- `block_until_ms: 1209600000` — 14日間（長時間ジョブ用。通常の VR180 バッチでは上限に達しない想定）
 - `is_background: false` — 完了まで待機
 
 **パス（固定）:**
@@ -37,5 +37,5 @@ bash .cursor/skills/sbs/scripts/convert-vr180.sh workspace/sbs-input workspace/m
 ## 補足
 
 - **APMP と MV-HEVC**: APMP（PresetPassthrough）は魚眼VR180用。Equirectangular SBS VR180 には PresetMVHEVC を使用する。
-- **処理時間**: 4GBファイルで約8〜10分
+- **処理時間**: 解像度・尺・マシンにより大きく変わる。目安として約20分のソースで約80分程度かかる例がある。
 - **出力**: HEVC（MV-HEVC）映像とAAC音声を含む .mov
