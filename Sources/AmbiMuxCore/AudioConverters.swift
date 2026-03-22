@@ -432,16 +432,15 @@ func convertVideoWithAudioToMOV(
             (referenceASBD: AudioStreamBasicDescription, hoaFormatDescription: CMFormatDescription)?
         >(initialState: nil)
         ambisonicsMapSampleBuffer = { buf in
-            guard let fd = CMSampleBufferGetFormatDescription(buf) else {
+            guard let fd = buf.formatDescription else {
                 throw AmbiMuxError.conversionFailed(
                     message: "Ambisonics sample buffer has no format description")
             }
-            guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(fd) else {
+            guard let asbd = fd.audioStreamBasicDescription else {
                 throw AmbiMuxError.couldNotGetAudioStreamDescription
             }
-            let asbd = asbdPtr.pointee
-            let hoaFD: CMFormatDescription = try hoaFDState.withLock { state in
-                if let existing = state {
+            let hoaFD: CMFormatDescription = try hoaFDState.withLock {
+                if let existing = $0 {
                     if existing.referenceASBD.isEquivalentStreamFormat(to: asbd) {
                         return existing.hoaFormatDescription
                     }
@@ -453,7 +452,7 @@ func convertVideoWithAudioToMOV(
                     throw AmbiMuxError.invalidChannelCount(count: channelCount)
                 }
                 let newFD = try copyAudioFormatDescriptionWithHOALayout(from: fd, channelCount: channelCount)
-                state = (referenceASBD: asbd, hoaFormatDescription: newFD)
+                $0 = (referenceASBD: asbd, hoaFormatDescription: newFD)
                 return newFD
             }
             return try sampleBufferReplacingFormatDescription(buf, newFormat: hoaFD)
