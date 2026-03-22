@@ -59,8 +59,7 @@ private func makeAmbisonicsAudioPipeline(
         throw AmbiMuxError.couldNotGetAudioStreamDescription
     }
 
-    let isSourceAPAC =
-        formatDescription.audioStreamBasicDescription?.mFormatID == kAudioFormatAPAC
+    let isSourceAPAC = asbdForReader.mFormatID == kAudioFormatAPAC
 
     // デコードはトラックのネイティブ形式のまま（outputSettings: nil）。HOA は append 直前に CMSampleBuffer の実 formatDescription にだけ付与する。
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
