@@ -250,8 +250,7 @@ func convertVideoWithAudioToMOV(
         >(initialState: nil)
         ambisonicsMapSampleBuffer = { buf in
             guard let fd = buf.formatDescription else {
-                throw AmbiMuxError.conversionFailed(
-                    message: "Ambisonics sample buffer has no format description")
+                throw AmbiMuxError.ambisonicsSampleBufferMissingFormatDescription
             }
             guard let asbd = fd.audioStreamBasicDescription else {
                 throw AmbiMuxError.couldNotGetAudioStreamDescription
@@ -261,8 +260,7 @@ func convertVideoWithAudioToMOV(
                     if existing.referenceASBD.isEquivalentStreamFormat(to: asbd) {
                         return existing.hoaFormatDescription
                     }
-                    throw AmbiMuxError.conversionFailed(
-                        message: "Ambisonics LPCM format changed mid-stream")
+                    throw AmbiMuxError.ambisonicsLpcmFormatChangedMidStream
                 }
                 let channelCount = Int(asbd.mChannelsPerFrame)
                 guard AmbisonicsOrder(channelCount: channelCount) != nil else {
@@ -395,6 +393,6 @@ func convertVideoWithAudioToMOV(
         print("Conversion completed: \(outputPath)")
     } else {
         let errorMessage = assetWriter.error?.localizedDescription ?? "Unknown error"
-        throw AmbiMuxError.conversionFailed(message: errorMessage)
+        throw AmbiMuxError.outputWritingFailed(message: errorMessage)
     }
 }

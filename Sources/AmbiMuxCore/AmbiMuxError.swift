@@ -14,10 +14,18 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
     // Option combination errors
     case invalidOutputFormatForAPACInput
 
-    // Conversion errors
+    // Conversion / mux pipeline errors
     case audioTrackNotFound
     case videoTrackNotFound
-    case conversionFailed(message: String)
+    case couldNotCreateAudioFormatDescriptionWithHOALayout
+    case couldNotGetSampleTimingInfoCount
+    case couldNotGetSampleTimingInfoArray
+    case couldNotGetSampleSizeArrayCount
+    case couldNotGetSampleSizeArray
+    case couldNotRecreateSampleBufferWithNewFormat
+    case ambisonicsSampleBufferMissingFormatDescription
+    case ambisonicsLpcmFormatChangedMidStream
+    case outputWritingFailed(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -46,8 +54,24 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
             return "Audio track not found"
         case .videoTrackNotFound:
             return "Video track not found"
-        case .conversionFailed(let message):
-            return "Conversion failed: \(message)"
+        case .couldNotCreateAudioFormatDescriptionWithHOALayout:
+            return "Could not create audio format description with HOA channel layout"
+        case .couldNotGetSampleTimingInfoCount:
+            return "Could not get sample timing info count"
+        case .couldNotGetSampleTimingInfoArray:
+            return "Could not get sample timing info array"
+        case .couldNotGetSampleSizeArrayCount:
+            return "Could not get sample size array count"
+        case .couldNotGetSampleSizeArray:
+            return "Could not get sample size array"
+        case .couldNotRecreateSampleBufferWithNewFormat:
+            return "Could not recreate sample buffer with new format"
+        case .ambisonicsSampleBufferMissingFormatDescription:
+            return "Ambisonics sample buffer has no format description"
+        case .ambisonicsLpcmFormatChangedMidStream:
+            return "Ambisonics LPCM format changed mid-stream"
+        case .outputWritingFailed(let message):
+            return "Output writing failed: \(message)"
         }
     }
 }

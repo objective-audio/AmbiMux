@@ -44,8 +44,7 @@ nonisolated func copyAudioFormatDescriptionWithHOALayout(
         )
     }
     guard err == noErr, let newFormat else {
-        throw AmbiMuxError.conversionFailed(
-            message: "Could not create audio format description with HOA channel layout")
+        throw AmbiMuxError.couldNotCreateAudioFormatDescriptionWithHOALayout
     }
     return newFormat
 }
@@ -103,7 +102,7 @@ nonisolated func sampleBufferReplacingFormatDescription(
     var timingStatus = CMSampleBufferGetSampleTimingInfoArray(
         sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &timingNeeded)
     guard timingStatus == noErr || timingStatus == kCMSampleBufferError_ArrayTooSmall else {
-        throw AmbiMuxError.conversionFailed(message: "Could not get sample timing info count")
+        throw AmbiMuxError.couldNotGetSampleTimingInfoCount
     }
     var timingInfos = [CMSampleTimingInfo](
         repeating: CMSampleTimingInfo(), count: max(1, Int(timingNeeded)))
@@ -114,7 +113,7 @@ nonisolated func sampleBufferReplacingFormatDescription(
                 entriesNeededOut: nil)
         }
         guard timingStatus == noErr else {
-            throw AmbiMuxError.conversionFailed(message: "Could not get sample timing info array")
+            throw AmbiMuxError.couldNotGetSampleTimingInfoArray
         }
     }
 
@@ -122,7 +121,7 @@ nonisolated func sampleBufferReplacingFormatDescription(
     var sizeStatus = CMSampleBufferGetSampleSizeArray(
         sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &sizesNeeded)
     guard sizeStatus == noErr || sizeStatus == kCMSampleBufferError_ArrayTooSmall else {
-        throw AmbiMuxError.conversionFailed(message: "Could not get sample size array count")
+        throw AmbiMuxError.couldNotGetSampleSizeArrayCount
     }
     var sizes = [Int](repeating: 0, count: max(1, Int(sizesNeeded)))
     if sizesNeeded > 0 {
@@ -132,7 +131,7 @@ nonisolated func sampleBufferReplacingFormatDescription(
                 entriesNeededOut: nil)
         }
         guard sizeStatus == noErr else {
-            throw AmbiMuxError.conversionFailed(message: "Could not get sample size array")
+            throw AmbiMuxError.couldNotGetSampleSizeArray
         }
     }
 
@@ -182,7 +181,7 @@ nonisolated func sampleBufferReplacingFormatDescription(
         )
     }
     guard createStatus == noErr, let newBuffer else {
-        throw AmbiMuxError.conversionFailed(message: "Could not recreate sample buffer with new format")
+        throw AmbiMuxError.couldNotRecreateSampleBufferWithNewFormat
     }
     return newBuffer
 }
