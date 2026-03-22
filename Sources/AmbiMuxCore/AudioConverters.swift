@@ -431,17 +431,24 @@ func convertVideoWithAudioToMOV(
     let ambisonicsMapSampleBuffer: ((CMSampleBuffer) throws -> CMSampleBuffer)?
     switch audioMode {
     case .lpcm, .embeddedLpcm:
-        let hoaFDCache = OSAllocatedUnfairLock(initialState: [String: CMFormatDescription]())
+        let hoaFDState = OSAllocatedUnfairLock<
+            (cacheKey: String, hoaFormatDescription: CMFormatDescription)?
+        >(initialState: nil)
         ambisonicsMapSampleBuffer = { buf in
             guard let fd = CMSampleBufferGetFormatDescription(buf) else {
-                return buf
+                throw AmbiMuxError.conversionFailed(
+                    message: "Ambisonics sample buffer has no format description")
             }
             guard let key = audioFormatCacheKeyString(from: fd) else {
-                return buf
+                throw AmbiMuxError.couldNotGetAudioStreamDescription
             }
-            let hoaFD: CMFormatDescription = try hoaFDCache.withLock { storage in
-                if let cached = storage[key] {
-                    return cached
+            let hoaFD: CMFormatDescription = try hoaFDState.withLock { state in
+                if let existing = state {
+                    if existing.cacheKey == key {
+                        return existing.hoaFormatDescription
+                    }
+                    throw AmbiMuxError.conversionFailed(
+                        message: "Ambisonics LPCM format changed mid-stream")
                 }
                 guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(fd) else {
                     throw AmbiMuxError.couldNotGetAudioStreamDescription
@@ -451,7 +458,7 @@ func convertVideoWithAudioToMOV(
                     throw AmbiMuxError.invalidChannelCount(count: channelCount)
                 }
                 let newFD = try copyAudioFormatDescriptionWithHOALayout(from: fd, channelCount: channelCount)
-                storage[key] = newFD
+                state = (cacheKey: key, hoaFormatDescription: newFD)
                 return newFD
             }
             return try sampleBufferReplacingFormatDescription(buf, newFormat: hoaFD)
