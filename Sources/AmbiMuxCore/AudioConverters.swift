@@ -4,6 +4,183 @@ import CoreMedia
 import Foundation
 import os
 
+/// HOA ACN SN3D の `AudioChannelLayout` を `AVChannelLayoutKey` 用にシリアライズする。
+nonisolated private func audioChannelLayoutDataHOAACNSN3D(channelCount: Int) throws -> Data {
+    guard AmbisonicsOrder(channelCount: channelCount) != nil else {
+        throw AmbiMuxError.invalidChannelCount(count: channelCount)
+    }
+    let ambisonicsLayout = AVAudioChannelLayout(
+        layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
+            | AudioChannelLayoutTag(channelCount)
+    )!
+    return Data(bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
+}
+
+/// ASBD・マジッククッキーを維持し、HOA ACN SN3D レイアウトの `CMFormatDescription` を作る。
+nonisolated private func copyAudioFormatDescriptionWithHOALayout(
+    from formatDescription: CMFormatDescription,
+    channelCount: Int
+) throws -> CMFormatDescription {
+    guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
+        throw AmbiMuxError.couldNotGetAudioStreamDescription
+    }
+    var asbd = asbdPtr.pointee
+    let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
+    var magicCookieSize: Int = 0
+    let magicCookiePtr = CMAudioFormatDescriptionGetMagicCookie(formatDescription, sizeOut: &magicCookieSize)
+    var newFormat: CMFormatDescription?
+    let err: OSStatus = layoutData.withUnsafeBytes { rawBuf in
+        guard let base = rawBuf.baseAddress else { return -1 }
+        return CMAudioFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault,
+            asbd: &asbd,
+            layoutSize: layoutData.count,
+            layout: base.assumingMemoryBound(to: AudioChannelLayout.self),
+            magicCookieSize: magicCookieSize,
+            magicCookie: magicCookiePtr.map { UnsafeRawPointer($0) },
+            extensions: nil,
+            formatDescriptionOut: &newFormat
+        )
+    }
+    guard err == noErr, let newFormat else {
+        throw AmbiMuxError.conversionFailed(
+            message: "Could not create audio format description with HOA channel layout")
+    }
+    return newFormat
+}
+
+/// デコード済み `CMSampleBuffer` の ASBD をキャッシュキー文字列にする（辞書キー用）。
+nonisolated private func audioFormatCacheKeyString(from formatDescription: CMFormatDescription) -> String? {
+    guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
+        return nil
+    }
+    let a = asbdPtr.pointee
+    return "\(a.mSampleRate)-\(a.mChannelsPerFrame)-\(a.mFormatID)-\(a.mFormatFlags)-\(a.mBitsPerChannel)-\(a.mBytesPerFrame)"
+}
+
+/// トラック ASBD に合わせた HOA 付き LPCM の `AVAssetWriterInput` 用 `outputSettings`（レートは従来どおり 48k 上限）。
+nonisolated private func linearPCMWriterOutputSettingsHOA(
+    asbd: AudioStreamBasicDescription,
+    channelCount: Int,
+    layoutData: Data
+) -> [String: Any] {
+    let isFloat = (asbd.mFormatFlags & UInt32(kAudioFormatFlagIsFloat)) != 0
+    let isBigEndian = (asbd.mFormatFlags & UInt32(kAudioFormatFlagIsBigEndian)) != 0
+    let isNonInterleaved = (asbd.mFormatFlags & UInt32(kAudioFormatFlagIsNonInterleaved)) != 0
+    let outputRate = min(asbd.mSampleRate, 48000)
+    return [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: outputRate,
+        AVNumberOfChannelsKey: channelCount,
+        AVLinearPCMBitDepthKey: Int(asbd.mBitsPerChannel),
+        AVLinearPCMIsFloatKey: isFloat,
+        AVLinearPCMIsBigEndianKey: isBigEndian,
+        AVLinearPCMIsNonInterleaved: isNonInterleaved,
+        AVChannelLayoutKey: layoutData,
+    ]
+}
+
+/// 音声データはそのまま、`formatDescription` だけ差し替えた `CMSampleBuffer` を返す。
+nonisolated private func sampleBufferReplacingFormatDescription(
+    _ sampleBuffer: CMSampleBuffer,
+    newFormat: CMFormatDescription
+) throws -> CMSampleBuffer {
+    guard CMSampleBufferGetFormatDescription(sampleBuffer) != nil else {
+        return sampleBuffer
+    }
+    guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+        return sampleBuffer
+    }
+    let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
+
+    var timingNeeded: CMItemCount = 0
+    var timingStatus = CMSampleBufferGetSampleTimingInfoArray(
+        sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &timingNeeded)
+    guard timingStatus == noErr || timingStatus == kCMSampleBufferError_ArrayTooSmall else {
+        throw AmbiMuxError.conversionFailed(message: "Could not get sample timing info count")
+    }
+    var timingInfos = [CMSampleTimingInfo](
+        repeating: CMSampleTimingInfo(), count: max(1, Int(timingNeeded)))
+    if timingNeeded > 0 {
+        timingStatus = timingInfos.withUnsafeMutableBufferPointer { buf in
+            CMSampleBufferGetSampleTimingInfoArray(
+                sampleBuffer, entryCount: timingNeeded, arrayToFill: buf.baseAddress!,
+                entriesNeededOut: nil)
+        }
+        guard timingStatus == noErr else {
+            throw AmbiMuxError.conversionFailed(message: "Could not get sample timing info array")
+        }
+    }
+
+    var sizesNeeded: CMItemCount = 0
+    var sizeStatus = CMSampleBufferGetSampleSizeArray(
+        sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &sizesNeeded)
+    guard sizeStatus == noErr || sizeStatus == kCMSampleBufferError_ArrayTooSmall else {
+        throw AmbiMuxError.conversionFailed(message: "Could not get sample size array count")
+    }
+    var sizes = [Int](repeating: 0, count: max(1, Int(sizesNeeded)))
+    if sizesNeeded > 0 {
+        sizeStatus = sizes.withUnsafeMutableBufferPointer { buf in
+            CMSampleBufferGetSampleSizeArray(
+                sampleBuffer, entryCount: sizesNeeded, arrayToFill: buf.baseAddress!,
+                entriesNeededOut: nil)
+        }
+        guard sizeStatus == noErr else {
+            throw AmbiMuxError.conversionFailed(message: "Could not get sample size array")
+        }
+    }
+
+    var newBuffer: CMSampleBuffer?
+    let createStatus: OSStatus
+    if timingNeeded > 0, sizesNeeded > 0 {
+        createStatus = timingInfos.withUnsafeMutableBufferPointer { timingBuf in
+            sizes.withUnsafeMutableBufferPointer { sizeBuf in
+                CMSampleBufferCreateReady(
+                    allocator: kCFAllocatorDefault,
+                    dataBuffer: dataBuffer,
+                    formatDescription: newFormat,
+                    sampleCount: numSamples,
+                    sampleTimingEntryCount: timingNeeded,
+                    sampleTimingArray: timingBuf.baseAddress!,
+                    sampleSizeEntryCount: sizesNeeded,
+                    sampleSizeArray: sizeBuf.baseAddress!,
+                    sampleBufferOut: &newBuffer
+                )
+            }
+        }
+    } else if timingNeeded > 0 {
+        createStatus = timingInfos.withUnsafeMutableBufferPointer { timingBuf in
+            CMSampleBufferCreateReady(
+                allocator: kCFAllocatorDefault,
+                dataBuffer: dataBuffer,
+                formatDescription: newFormat,
+                sampleCount: numSamples,
+                sampleTimingEntryCount: timingNeeded,
+                sampleTimingArray: timingBuf.baseAddress!,
+                sampleSizeEntryCount: 0,
+                sampleSizeArray: nil,
+                sampleBufferOut: &newBuffer
+            )
+        }
+    } else {
+        createStatus = CMSampleBufferCreateReady(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: dataBuffer,
+            formatDescription: newFormat,
+            sampleCount: numSamples,
+            sampleTimingEntryCount: 0,
+            sampleTimingArray: nil,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &newBuffer
+        )
+    }
+    guard createStatus == noErr, let newBuffer else {
+        throw AmbiMuxError.conversionFailed(message: "Could not recreate sample buffer with new format")
+    }
+    return newBuffer
+}
+
 private struct AudioTrackPipeline: Sendable {
     let reader: AVAssetReader
     let readerOutput: AVAssetReaderTrackOutput
@@ -48,44 +225,36 @@ private func makeFallbackAudioPipelineIfPresent(
 
 private func makeAmbisonicsAudioPipeline(
     audioAsset: AVURLAsset,
+    audioTrack: AVAssetTrack,
     outputAudioFormat: AudioOutputFormat
 ) async throws -> AudioTrackPipeline {
-    let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
-    guard let audioTrack = audioTracks.first else {
-        throw AmbiMuxError.audioTrackNotFound
-    }
-
     let formatDescriptions = try await audioTrack.load(.formatDescriptions)
     guard let formatDescription = formatDescriptions.first else {
         throw AmbiMuxError.couldNotRetrieveFormatInformation
     }
+    guard let asbdForReader = formatDescription.audioStreamBasicDescription else {
+        throw AmbiMuxError.couldNotGetAudioStreamDescription
+    }
 
+    let isSourceAPAC =
+        formatDescription.audioStreamBasicDescription?.mFormatID == kAudioFormatAPAC
+
+    // デコードはトラックのネイティブ形式のまま（outputSettings: nil）。HOA は append 直前に CMSampleBuffer の実 formatDescription にだけ付与する。
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
     let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
     audioAssetReader.add(audioReaderOutput)
 
-    // ソースが LPCM（temp CAF 経由）かつ APAC 出力を要求された場合のみエンコード設定を適用する。
-    // それ以外はパススルー（LPCM→LPCM / APAC→APAC）。
+    // lpcm/embeddedLpcm: MOV 書き込み時に CMSampleBuffer を実 ASBD のまま HOA に差し替え。APAC 出力は HOA 付きでエンコード、LPCM 出力はデコード ASBD に合わせた HOA 付き LPCM、それ以外はパススルー。
     let audioInput: AVAssetWriterInput
-    let isSourceAPAC =
-        formatDescription.audioStreamBasicDescription?.mFormatID == kAudioFormatAPAC
     if outputAudioFormat == .apac && !isSourceAPAC {
-        guard let asbd = formatDescription.audioStreamBasicDescription else {
-            throw AmbiMuxError.couldNotGetAudioStreamDescription
-        }
-        let channelCount = Int(asbd.mChannelsPerFrame)
+        let channelCount = Int(asbdForReader.mChannelsPerFrame)
         guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
             throw AmbiMuxError.invalidChannelCount(count: channelCount)
         }
-        let ambisonicsLayout = AVAudioChannelLayout(
-            layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
-                | AudioChannelLayoutTag(ambisonicsOrder.channelCount)
-        )!
-        let layoutData = Data(
-            bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
+        let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
         let writerAudioSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatAPAC,
-            AVSampleRateKey: min(asbd.mSampleRate, 48000),
+            AVSampleRateKey: min(asbdForReader.mSampleRate, 48000),
             AVNumberOfChannelsKey: ambisonicsOrder.channelCount,
             AVChannelLayoutKey: layoutData,
             AVEncoderBitRateKey: 384000,
@@ -94,6 +263,18 @@ private func makeAmbisonicsAudioPipeline(
                 .movie.rawValue,
             AVEncoderASPFrequencyKey: 75,
         ]
+        audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerAudioSettings)
+    } else if outputAudioFormat == .lpcm && !isSourceAPAC {
+        let channelCount = Int(asbdForReader.mChannelsPerFrame)
+        guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
+            throw AmbiMuxError.invalidChannelCount(count: channelCount)
+        }
+        let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
+        let writerAudioSettings = linearPCMWriterOutputSettingsHOA(
+            asbd: asbdForReader,
+            channelCount: ambisonicsOrder.channelCount,
+            layoutData: layoutData
+        )
         audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerAudioSettings)
     } else {
         audioInput = AVAssetWriterInput(
@@ -109,104 +290,6 @@ private func makeAmbisonicsAudioPipeline(
         readerOutput: audioReaderOutput,
         writerInput: audioInput
     )
-}
-
-private func extractAudioToTempCAF(
-    audioAsset: AVURLAsset,
-    audioTrack: AVAssetTrack,
-    outputDirectory: URL,
-    uuidGenerator: @escaping @Sendable () -> String
-) async throws -> URL {
-    var tempURL: URL
-    repeat {
-        tempURL = outputDirectory
-            .appendingPathComponent(uuidGenerator())
-            .appendingPathExtension("caf")
-    } while FileManager.default.fileExists(atPath: tempURL.path)
-
-    let formatDescriptions = try await audioTrack.load(.formatDescriptions)
-    guard let formatDescription = formatDescriptions.first else {
-        throw AmbiMuxError.couldNotRetrieveFormatInformation
-    }
-    guard let asbd = formatDescription.audioStreamBasicDescription else {
-        throw AmbiMuxError.couldNotGetAudioStreamDescription
-    }
-
-    let channelCount = Int(asbd.mChannelsPerFrame)
-    guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
-        throw AmbiMuxError.invalidChannelCount(count: channelCount)
-    }
-    let ambisonicsLayout = AVAudioChannelLayout(
-        layoutTag: kAudioChannelLayoutTag_HOA_ACN_SN3D
-            | AudioChannelLayoutTag(ambisonicsOrder.channelCount)
-    )!
-    let layoutData = Data(
-        bytes: ambisonicsLayout.layout, count: MemoryLayout<AudioChannelLayout>.size)
-
-    let sampleRate = min(asbd.mSampleRate, 48000.0)
-
-    // AVChannelLayoutKey を指定せずチャンネルマトリクス変換を回避する。
-    // ソースのチャンネルレイアウト（UseChannelDescriptions + HOA ラベル）のまま PCM を取り出す。
-    let readerOutputSettings: [String: Any] = [
-        AVFormatIDKey: kAudioFormatLinearPCM,
-        AVSampleRateKey: sampleRate,
-        AVNumberOfChannelsKey: channelCount,
-        AVLinearPCMBitDepthKey: 32,
-        AVLinearPCMIsFloatKey: true,
-        AVLinearPCMIsBigEndianKey: false,
-        AVLinearPCMIsNonInterleaved: false,
-    ]
-
-    // Writer は HOA_ACN_SN3D でタグ付けする（LPCM writer は PCM データを変換しない）。
-    // これにより後段の APAC エンコーダーがレイアウト変換なしで HOA として処理できる。
-    let writerOutputSettings: [String: Any] = [
-        AVFormatIDKey: kAudioFormatLinearPCM,
-        AVSampleRateKey: sampleRate,
-        AVNumberOfChannelsKey: channelCount,
-        AVLinearPCMBitDepthKey: 32,
-        AVLinearPCMIsFloatKey: true,
-        AVLinearPCMIsBigEndianKey: false,
-        AVLinearPCMIsNonInterleaved: false,
-        AVChannelLayoutKey: layoutData,
-    ]
-
-    let cafReader = try AVAssetReader(asset: audioAsset)
-    let cafReaderOutput = AVAssetReaderTrackOutput(
-        track: audioTrack, outputSettings: readerOutputSettings)
-    cafReader.add(cafReaderOutput)
-
-    let cafWriter = try AVAssetWriter(outputURL: tempURL, fileType: .caf)
-    let cafWriterInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerOutputSettings)
-    cafWriterInput.expectsMediaDataInRealTime = false
-    cafWriter.add(cafWriterInput)
-
-    cafWriter.startWriting()
-    cafWriter.startSession(atSourceTime: .zero)
-    cafReader.startReading()
-
-    let cafFinished = OSAllocatedUnfairLock(initialState: false)
-    pump(
-        writerInput: cafWriterInput,
-        readerOutput: cafReaderOutput,
-        queueLabel: "jp.objective-audio.ambimux.audio.tempcaf",
-        qos: .userInitiated,
-        finishedFlag: cafFinished
-    )
-
-    try await Task {
-        while !(cafFinished.withLock { $0 }) {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-    }.value
-
-    await cafWriter.finishWriting()
-
-    guard cafWriter.status == .completed else {
-        let message = cafWriter.error?.localizedDescription ?? "Unknown error"
-        throw AmbiMuxError.conversionFailed(message: message)
-    }
-
-    return tempURL
 }
 
 private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrackPipeline {
@@ -234,19 +317,46 @@ private func pump(
     readerOutput: AVAssetReaderOutput,
     queueLabel: String,
     qos: DispatchQoS,
-    finishedFlag: OSAllocatedUnfairLock<Bool>
+    finishedFlag: OSAllocatedUnfairLock<Bool>,
+    mapSampleBuffer: ((_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil,
+    errorLock: OSAllocatedUnfairLock<Error?>? = nil
 ) {
     let queue = DispatchQueue(label: queueLabel, qos: qos)
 
     let writerInputRef = UncheckedSendableRef(writerInput)
     let readerOutputRef = UncheckedSendableRef(readerOutput)
+    let mapRef = UncheckedSendableRef(mapSampleBuffer)
+    let errorLockRef = UncheckedSendableRef(errorLock)
     writerInput.requestMediaDataWhenReady(on: queue) {
         let writerInput = writerInputRef.value
         let readerOutput = readerOutputRef.value
+        let mapSampleBuffer = mapRef.value
+        let errorLock = errorLockRef.value
 
         while writerInput.isReadyForMoreMediaData && !(finishedFlag.withLock { $0 }) {
             if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
-                writerInput.append(sampleBuffer)
+                do {
+                    let toAppend: CMSampleBuffer
+                    if let map = mapSampleBuffer {
+                        toAppend = try map(sampleBuffer)
+                    } else {
+                        toAppend = sampleBuffer
+                    }
+                    guard writerInput.append(toAppend) else {
+                        errorLock?.withLock {
+                            $0 = AmbiMuxError.conversionFailed(
+                                message: "AVAssetWriterInput.append returned false")
+                        }
+                        writerInput.markAsFinished()
+                        finishedFlag.withLock { $0 = true }
+                        return
+                    }
+                } catch {
+                    errorLock?.withLock { $0 = error }
+                    writerInput.markAsFinished()
+                    finishedFlag.withLock { $0 = true }
+                    return
+                }
             } else {
                 writerInput.markAsFinished()
                 finishedFlag.withLock { $0 = true }
@@ -261,13 +371,11 @@ func convertVideoWithAudioToMOV(
     audioMode: AudioInputMode,
     videoPath: String,
     outputPath: String,
-    outputAudioFormat: AudioOutputFormat? = nil,
-    uuidGenerator: @escaping @Sendable () -> String = { UUID().uuidString }
+    outputAudioFormat: AudioOutputFormat? = nil
 ) async throws {
     let audioURL = URL(fileURLWithPath: audioPath)
     let videoURL = URL(fileURLWithPath: videoPath)
     let outputURL = URL(fileURLWithPath: outputPath)
-    let outputDirectory = outputURL.deletingLastPathComponent()
 
     // Create AVURLAsset for video file
     let videoAsset = AVURLAsset(url: videoURL)
@@ -281,10 +389,10 @@ func convertVideoWithAudioToMOV(
         effectiveOutputFormat = .apac
     }
 
-    // lpcm・embeddedLpcm: 常に temp CAF 経由でチャンネルマトリクス変換を回避する
+    // lpcm・embeddedLpcm: デコードはネイティブ形式のまま。append 時に各 CMSampleBuffer の実 ASBD に HOA レイアウトのみ付与
     // apac: パススルー
-    var tempCAFURL: URL?
     let audioAsset: AVURLAsset
+    let ambisonicsTrack: AVAssetTrack
     let embeddedScanResult: (ambisonics: AVAssetTrack, fallback: AVAssetTrack?)?
 
     switch audioMode {
@@ -292,38 +400,65 @@ func convertVideoWithAudioToMOV(
         embeddedScanResult = nil
         let sourceAsset = AVURLAsset(url: audioURL)
         let audioTracks = try await sourceAsset.loadTracks(withMediaType: .audio)
-        guard let ambisonicsTrack = audioTracks.first else {
+        guard let track = audioTracks.first else {
             throw AmbiMuxError.audioTrackNotFound
         }
-        let tempURL = try await extractAudioToTempCAF(
-            audioAsset: sourceAsset,
-            audioTrack: ambisonicsTrack,
-            outputDirectory: outputDirectory,
-            uuidGenerator: uuidGenerator)
-        tempCAFURL = tempURL
-        audioAsset = AVURLAsset(url: tempURL)
+        audioAsset = sourceAsset
+        ambisonicsTrack = track
     case .embeddedLpcm:
         let scanResult = try await scanVideoAudioTracks(videoAsset: videoAsset)
         embeddedScanResult = (scanResult.ambisonics, scanResult.fallback)
-        let tempURL = try await extractAudioToTempCAF(
-            audioAsset: videoAsset,
-            audioTrack: scanResult.ambisonics,
-            outputDirectory: outputDirectory,
-            uuidGenerator: uuidGenerator)
-        tempCAFURL = tempURL
-        audioAsset = AVURLAsset(url: tempURL)
+        audioAsset = videoAsset
+        ambisonicsTrack = scanResult.ambisonics
     case .apac:
         embeddedScanResult = nil
-        audioAsset = AVURLAsset(url: audioURL)
+        let externalAsset = AVURLAsset(url: audioURL)
+        let audioTracks = try await externalAsset.loadTracks(withMediaType: .audio)
+        guard let track = audioTracks.first else {
+            throw AmbiMuxError.audioTrackNotFound
+        }
+        audioAsset = externalAsset
+        ambisonicsTrack = track
     }
-    defer { tempCAFURL.map { try? FileManager.default.removeItem(at: $0) } }
 
     // Pipelines (refactored for future multiple audio tracks)
     let videoPipeline = try await makeVideoPipeline(videoAsset: videoAsset)
     let ambisonicsAudioPipeline = try await makeAmbisonicsAudioPipeline(
         audioAsset: audioAsset,
+        audioTrack: ambisonicsTrack,
         outputAudioFormat: effectiveOutputFormat
     )
+    let ambisonicsMapSampleBuffer: ((CMSampleBuffer) throws -> CMSampleBuffer)?
+    switch audioMode {
+    case .lpcm, .embeddedLpcm:
+        let hoaFDCache = OSAllocatedUnfairLock(initialState: [String: CMFormatDescription]())
+        ambisonicsMapSampleBuffer = { buf in
+            guard let fd = CMSampleBufferGetFormatDescription(buf) else {
+                return buf
+            }
+            guard let key = audioFormatCacheKeyString(from: fd) else {
+                return buf
+            }
+            let hoaFD: CMFormatDescription = try hoaFDCache.withLock { storage in
+                if let cached = storage[key] {
+                    return cached
+                }
+                guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(fd) else {
+                    throw AmbiMuxError.couldNotGetAudioStreamDescription
+                }
+                let channelCount = Int(asbdPtr.pointee.mChannelsPerFrame)
+                guard AmbisonicsOrder(channelCount: channelCount) != nil else {
+                    throw AmbiMuxError.invalidChannelCount(count: channelCount)
+                }
+                let newFD = try copyAudioFormatDescriptionWithHOALayout(from: fd, channelCount: channelCount)
+                storage[key] = newFD
+                return newFD
+            }
+            return try sampleBufferReplacingFormatDescription(buf, newFormat: hoaFD)
+        }
+    case .apac:
+        ambisonicsMapSampleBuffer = nil
+    }
     // 映像ファイルの音声トラックをフォールバック用に抽出（存在する場合）
     // .embeddedLpcm: scanVideoAudioTracks で検出したモノ/ステレオをフォールバックに使用
     // .apac/.lpcm: scanVideoFallbackTrack で検出したモノ/ステレオをフォールバックに使用
@@ -410,7 +545,8 @@ func convertVideoWithAudioToMOV(
         readerOutput: ambisonicsAudioPipeline.readerOutput,
         queueLabel: "jp.objective-audio.ambimux.audio.ambisonics",
         qos: .userInitiated,
-        finishedFlag: audioFinished
+        finishedFlag: audioFinished,
+        mapSampleBuffer: ambisonicsMapSampleBuffer
     )
     if let fallbackAudioPipeline, let fallbackAudioInput {
         pump(
