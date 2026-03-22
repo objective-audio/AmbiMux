@@ -94,10 +94,24 @@ nonisolated func scanVideoFallbackTrack(videoAsset: AVURLAsset) async throws -> 
     return nil
 }
 
-// Validate embedded LPCM audio: at least one Ambisonics track (4/9/16ch) must exist
+nonisolated private func isTrackAPAC(_ track: AVAssetTrack) async throws -> Bool {
+    let formatDescriptions = try await track.load(.formatDescriptions)
+    guard let formatDescription = formatDescriptions.first,
+        let asbd = formatDescription.audioStreamBasicDescription
+    else {
+        throw AmbiMuxError.couldNotGetAudioStreamDescription
+    }
+    return asbd.mFormatID == kAudioFormatAPAC
+}
+
+/// Validates embedded spatial audio before conversion: an Ambisonics track (4/9/16ch) must exist,
+/// and the primary Ambisonics track must not already be APAC (no re-encode needed).
 nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
     let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
-    _ = try await scanVideoAudioTracks(videoAsset: videoAsset)
+    let scanResult = try await scanVideoAudioTracks(videoAsset: videoAsset)
+    if try await isTrackAPAC(scanResult.ambisonics) {
+        throw AmbiMuxError.embeddedAmbisonicsAlreadyAPAC
+    }
 }
 
 // Display detailed information of output file

@@ -217,6 +217,35 @@ struct RunAmbiMuxTests {
         }
     }
 
+    @Test func testRunAmbiMuxFailsWhenEmbeddedAmbisonicsIsAPAC() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let intermediatePath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("embedded_apac_intermediate.mov").path
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: intermediatePath,
+            outputAudioFormat: .apac
+        )
+
+        let secondOutputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("should_not_be_created_embedded.mov").path
+
+        await #expect(throws: AmbiMuxError.embeddedAmbisonicsAlreadyAPAC) {
+            try await runAmbiMux(
+                audioPath: nil,
+                videoPath: intermediatePath,
+                outputPath: secondOutputPath
+            )
+        }
+    }
+
     @Test func testRunAmbiMuxSuccessWithVideoAudioFallback() async throws {
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()
