@@ -49,13 +49,18 @@ nonisolated private func copyAudioFormatDescriptionWithHOALayout(
     return newFormat
 }
 
-/// デコード済み `CMSampleBuffer` の ASBD をキャッシュキー文字列にする（辞書キー用）。
-nonisolated private func audioFormatCacheKeyString(from formatDescription: CMFormatDescription) -> String? {
-    guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
-        return nil
+extension AudioStreamBasicDescription {
+    /// `mReserved` を除き、ストリーム形式として同一かどうか。
+    nonisolated func isEquivalentStreamFormat(to other: AudioStreamBasicDescription) -> Bool {
+        mSampleRate == other.mSampleRate
+            && mFormatID == other.mFormatID
+            && mFormatFlags == other.mFormatFlags
+            && mBytesPerPacket == other.mBytesPerPacket
+            && mFramesPerPacket == other.mFramesPerPacket
+            && mBytesPerFrame == other.mBytesPerFrame
+            && mBitsPerChannel == other.mBitsPerChannel
+            && mChannelsPerFrame == other.mChannelsPerFrame
     }
-    let a = asbdPtr.pointee
-    return "\(a.mSampleRate)-\(a.mChannelsPerFrame)-\(a.mFormatID)-\(a.mFormatFlags)-\(a.mBitsPerChannel)-\(a.mBytesPerFrame)"
 }
 
 /// トラック ASBD に合わせた HOA 付き LPCM の `AVAssetWriterInput` 用 `outputSettings`（レートは従来どおり 48k 上限）。
@@ -432,33 +437,31 @@ func convertVideoWithAudioToMOV(
     switch audioMode {
     case .lpcm, .embeddedLpcm:
         let hoaFDState = OSAllocatedUnfairLock<
-            (cacheKey: String, hoaFormatDescription: CMFormatDescription)?
+            (referenceASBD: AudioStreamBasicDescription, hoaFormatDescription: CMFormatDescription)?
         >(initialState: nil)
         ambisonicsMapSampleBuffer = { buf in
             guard let fd = CMSampleBufferGetFormatDescription(buf) else {
                 throw AmbiMuxError.conversionFailed(
                     message: "Ambisonics sample buffer has no format description")
             }
-            guard let key = audioFormatCacheKeyString(from: fd) else {
+            guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(fd) else {
                 throw AmbiMuxError.couldNotGetAudioStreamDescription
             }
+            let asbd = asbdPtr.pointee
             let hoaFD: CMFormatDescription = try hoaFDState.withLock { state in
                 if let existing = state {
-                    if existing.cacheKey == key {
+                    if existing.referenceASBD.isEquivalentStreamFormat(to: asbd) {
                         return existing.hoaFormatDescription
                     }
                     throw AmbiMuxError.conversionFailed(
                         message: "Ambisonics LPCM format changed mid-stream")
                 }
-                guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(fd) else {
-                    throw AmbiMuxError.couldNotGetAudioStreamDescription
-                }
-                let channelCount = Int(asbdPtr.pointee.mChannelsPerFrame)
+                let channelCount = Int(asbd.mChannelsPerFrame)
                 guard AmbisonicsOrder(channelCount: channelCount) != nil else {
                     throw AmbiMuxError.invalidChannelCount(count: channelCount)
                 }
                 let newFD = try copyAudioFormatDescriptionWithHOALayout(from: fd, channelCount: channelCount)
-                state = (cacheKey: key, hoaFormatDescription: newFD)
+                state = (referenceASBD: asbd, hoaFormatDescription: newFD)
                 return newFD
             }
             return try sampleBufferReplacingFormatDescription(buf, newFormat: hoaFD)
