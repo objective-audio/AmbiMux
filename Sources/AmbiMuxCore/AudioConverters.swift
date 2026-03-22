@@ -323,20 +323,17 @@ private func pump(
     queueLabel: String,
     qos: DispatchQoS,
     finishedFlag: OSAllocatedUnfairLock<Bool>,
-    mapSampleBuffer: ((_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil,
-    errorLock: OSAllocatedUnfairLock<Error?>? = nil
+    mapSampleBuffer: ((_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil
 ) {
     let queue = DispatchQueue(label: queueLabel, qos: qos)
 
     let writerInputRef = UncheckedSendableRef(writerInput)
     let readerOutputRef = UncheckedSendableRef(readerOutput)
     let mapRef = UncheckedSendableRef(mapSampleBuffer)
-    let errorLockRef = UncheckedSendableRef(errorLock)
     writerInput.requestMediaDataWhenReady(on: queue) {
         let writerInput = writerInputRef.value
         let readerOutput = readerOutputRef.value
         let mapSampleBuffer = mapRef.value
-        let errorLock = errorLockRef.value
 
         while writerInput.isReadyForMoreMediaData && !(finishedFlag.withLock { $0 }) {
             if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
@@ -348,16 +345,11 @@ private func pump(
                         toAppend = sampleBuffer
                     }
                     guard writerInput.append(toAppend) else {
-                        errorLock?.withLock {
-                            $0 = AmbiMuxError.conversionFailed(
-                                message: "AVAssetWriterInput.append returned false")
-                        }
                         writerInput.markAsFinished()
                         finishedFlag.withLock { $0 = true }
                         return
                     }
                 } catch {
-                    errorLock?.withLock { $0 = error }
                     writerInput.markAsFinished()
                     finishedFlag.withLock { $0 = true }
                     return
