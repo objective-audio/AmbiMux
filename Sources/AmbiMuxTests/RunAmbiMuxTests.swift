@@ -92,31 +92,37 @@ struct RunAmbiMuxTests {
         #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Audio track should be 4ch APAC")
     }
 
-    @Test func testRunAmbiMuxFailsWhenEmbeddedAmbiDiscreteNotFromZero() async throws {
+    @Test func testRunAmbiMuxSuccessWithEmbeddedAmbisonicsOnSecondTrack() async throws {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
-        // test_2ch_4ch.mov の 4ch は Channel Descriptions が Discrete 2–5（0 始まり連番ではない）
+        // test_2ch_4ch.mov: 先頭がステレオ、2本目が 4ch（ソースは Discrete 2–5 ラベルだが変換可能）
         let videoPath = try TestResourceHelper.resourcePath(
             for: "test_2ch_4ch", withExtension: "mov")
         let outputPath = URL(fileURLWithPath: cachePath)
-            .appendingPathComponent("should_not_be_created_bad_discrete.mov").path
+            .appendingPathComponent("runAmbi_embedded_2ch_then_4ch_output.mov").path
 
-        do {
-            try await runAmbiMux(
-                audioPath: nil,
-                videoPath: videoPath,
-                outputPath: outputPath
-            )
-            Issue.record("Expected invalidAmbisonicsChannelLayout")
-        } catch let err as AmbiMuxError {
-            if case .noAmbisonicsTrackFound = err {
-                return
-            }
-            Issue.record("Unexpected AmbiMuxError: \(err)")
-        } catch {
-            Issue.record("Unexpected error: \(error)")
+        try await runAmbiMux(
+            audioPath: nil,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
+
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Output file should be created at \(outputPath)")
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
+        #expect(audioTracks.count == 2, "Ambisonics + stereo fallback → 2 audio tracks")
+
+        let primaryFormat = try await audioTracks[0].load(.formatDescriptions)
+        guard let fd = primaryFormat.first,
+            let asbdPtr = fd.audioStreamBasicDescription
+        else {
+            Issue.record("Could not get primary audio format")
+            return
         }
+        #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Primary track should be 4ch")
     }
 
     @Test func testRunAmbiMuxSuccessWithEmbeddedLpcmAndFallback() async throws {
@@ -207,6 +213,35 @@ struct RunAmbiMuxTests {
                 videoPath: videoPath,
                 outputPath: outputPath,
                 outputAudioFormat: .lpcm
+            )
+        }
+    }
+
+    @Test func testRunAmbiMuxFailsWhenEmbeddedAmbisonicsIsAPAC() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let intermediatePath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("embedded_apac_intermediate.mov").path
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: intermediatePath,
+            outputAudioFormat: .apac
+        )
+
+        let secondOutputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("should_not_be_created_embedded.mov").path
+
+        await #expect(throws: AmbiMuxError.embeddedAmbisonicsAlreadyAPAC) {
+            try await runAmbiMux(
+                audioPath: nil,
+                videoPath: intermediatePath,
+                outputPath: secondOutputPath
             )
         }
     }
