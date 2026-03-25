@@ -1,6 +1,6 @@
 ---
 name: mux
-description: Batch convert all .mov videos in workspace/mux-input/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise uses embedded Ambisonics (4/9/16ch). Primary spatial audio is output as APAC; if the same MOV also embeds mono/stereo, that track is passed through as a second audio track (fallback). Outputs to workspace/output/. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing multiple MOV files.
+description: Batch convert all .mov videos in workspace/mux-input/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise uses embedded Ambisonics (4/9/16ch). Primary spatial audio is output as APAC; if the same MOV also embeds mono/stereo, that track is passed through as a second audio track (fallback). Outputs to workspace/output/. Prefer .cursor/skills/mux/scripts/batch-mux.sh with required_permissions ["all"]. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing MOV files.
 ---
 
 # AmbiMux: workspace/ の MOV を一括変換（外部オーディオ優先・埋め込みフォールバック）
@@ -15,186 +15,37 @@ description: Batch convert all .mov videos in workspace/mux-input/. For each MOV
 
 ## 前提条件
 
-- **APACエンコーダーはサンドボックス内では動作しない**ため、全てのコマンドは `required_permissions: ["all"]` を指定してサンドボックスなしで実行する
+- **APACエンコーダーはサンドボックス内では動作しない**ため、実行は `required_permissions: ["all"]`（サンドボックスなし）とする
 
-## ワークフロー
+## ワークフロー（batch-mux.sh）
 
-### 1) フォルダ準備
+変換の本体は **[batch-mux.sh](scripts/batch-mux.sh)**（リポジトリからは `.cursor/skills/mux/scripts/batch-mux.sh`）。**毎回 `swift build -c release`**、入力の列挙・外部音声の前方一致（`.mp4` → `.wav` → `.aiff`）、埋め込みの `ffprobe` 判定（`channels=` が 4 / 9 / 16 のトラックの有無）、各 `.mov` への `ambimux` 呼び出し（常に `--audio-output apac`）、終了時の処理サマリまで行う。
 
-`workspace/mux-input/` と `workspace/output/` が無い場合は作成する。
-
-```bash
-mkdir -p workspace/mux-input workspace/output
-```
-
-### 2) 【必須】ビルド — 省略してはならない
-
-**ビルドは絶対に省略しない。** 以下のいずれの場合でも、毎回必ず実行する:
-
-- `.mov` が0件でも実行する
-- 既存の `.build/release/ambimux` があっても実行する
-- 変換対象が1件もない場合でも実行する
-
-リポジトリルートでビルドを実行する。`required_permissions: ["all"]` を指定してサンドボックスなしで実行する。
+1. リポジトリルートからスクリプトを実行する（**必ずサンドボックス外**）。
 
 ```bash
-swift build -c release
+.cursor/skills/mux/scripts/batch-mux.sh
 ```
 
-**ビルド完了の確認:**
-- `Build complete!` が出力される
-- `.build/release/ambimux` が存在する
+## ペアリングと出力のルール（スクリプトと同じ）
 
-### 3) `workspace/mux-input/` の `.mov` を収集
-
-```bash
-find workspace/mux-input -name "*.mov" -type f | sort
-```
-
-### 4) 各 `.mov` に対して処理モードを判定
-
-**Step A: 外部オーディオファイルを探す**
-
-- **優先順位**: `.mp4` → `.wav` → `.aiff`
-- **ルール**: `<movのベース名>` で始まるファイルを `workspace/mux-input/` から探す
-- 例: `video_abc.mov` なら `video_abc*.mp4`、`video_abc*.wav`、`video_abc*.aiff` の順に探す
-
-**ペアリング例:**
-
-| `.mov`          | 候補                         | ペア結果                          |
-|-----------------|------------------------------|-----------------------------------|
-| `video_abc.mov` | `video_abc_apac00000000.mp4` | ✅ `.mp4` を使用                  |
-| `video_abc.mov` | `video_abc.wav`              | ✅ `.wav` を使用（`.mp4` がない場合） |
-| `demo.mov`      | `demo.wav`, `demo.aiff`      | ✅ `.wav` を使用（`.wav` 優先）   |
-| `test.mov`      | （該当なし）                 | → Step B へ                       |
-
-**Step B: 外部オーディオが無い場合 — 埋め込みオーディオを確認**
-
-```bash
-ffprobe -v quiet -show_streams -select_streams a "<mov>" 2>&1 | grep channels=
-```
-
-| 条件 | 結果 |
+| 項目 | 内容 |
 |------|------|
-| 少なくとも1本のトラックが 4 / 9 / 16ch（Ambisonics として解釈可能） | ✅ 埋め込みで変換（主トラック）。別トラックに 1/2ch があれば出力に第2音声として追加 |
-| Ambisonics に該当するトラックがない、またはオーディオなし | ❌ スキップ（警告） |
+| 外部音声の優先 | `.mp4` → `.wav` → `.aiff`。`<movのベース名>` で始まるファイルを入力ディレクトリ直下から1件選ぶ（例: `video_abc.mov` → `video_abc*.mp4` など） |
+| 埋め込みフォールバック | 外部が無いとき、音声ストリームのうち **4 / 9 / 16ch が1本でもあれば** 埋め込みで変換対象。それ以外はスキップ |
+| 出力パス | `<ベース名>_ambimux.mov`（既存と重なる場合は `_1` 等でユニーク化。**ambimux** 側の挙動） |
+| 主トラック | 常に **`--audio-output apac`**。入力が APAC ならコピー、LPCM なら APAC エンコード |
+| 外部音声利用時 | 映像側に 1/2ch の埋め込みがあれば **第2トラックとしてパススルー**（フォールバック） |
 
-`ffprobe` では複数行の `channels=` が出ることがあります。**4/9/16ch のトラックが1本でもあれば** Step B は成功扱いです。
-
-**処理モードの決定まとめ:**
-
-| 外部オーディオ | 埋め込みオーディオ  | 処理                 |
-|----------------|---------------------|----------------------|
-| あり           | —                   | 外部オーディオで変換 |
-| なし           | Ambisonics（4/9/16ch）あり | 埋め込みで変換（モノ/ステレオの別トラックがあれば第2トラックも出力） |
-| なし           | Ambisonics なし / オーディオなし | スキップ + 警告      |
-
-### 5) 各 `.mov` に対して変換を実行
-
-**前提条件:** 必ず 2) ビルドが成功してから変換を実行する。ビルド未実行・失敗の場合は変換に進まない。
-
-**重要**: 全てのコマンドは `required_permissions: ["all"]` を指定してサンドボックスなしで実行します。
-
-**外部オーディオあり（mux-audio 相当）:**
-
-```bash
-.build/release/ambimux \
-  --audio "workspace/mux-input/<audio>" \
-  --video "workspace/mux-input/<mov>" \
-  --output "workspace/output/<movBaseName>_ambimux.mov" \
-  --audio-output apac
-```
-
-- `--audio` オプションを使用（APAC / LPCM は自動判定）
-- APAC ファイルはコピーのみ（再エンコードなし）
-- LPCM ファイルは **APAC** へエンコードして出力
-- 映像 `.mov` に **モノ/ステレオ（1/2ch）** の埋め込みトラックがある場合、主トラック（外部 Ambisonics 由来の APAC）に加えて **第2音声トラックとしてパススルー**（フォールバック）する
-
-**外部オーディオなし・埋め込みあり（mux-embedded 相当）:**
-
-```bash
-.build/release/ambimux \
-  --video "workspace/mux-input/<mov>" \
-  --output "workspace/output/<movBaseName>_ambimux.mov" \
-  --audio-output apac
-```
-
-- `--audio` オプションなし（`--video` のみ）
-- **主トラック**: 映像内の Ambisonics を **APAC** で出力（LPCM → APAC エンコード、埋め込みが APAC ならコピー）
-- **第2トラック（任意）**: 同一 `.mov` 内に **モノ/ステレオ（1/2ch）** の音声トラックもあれば、**フォールバック用としてそのフォーマットのままパススルー**し、出力の音声トラックは **最大2本**（主 Ambisonics + フォールバック）になる
-
-**出力ファイル名:**
-- `<movのベース名>_ambimux.mov`
-- 既存ファイルがある場合は自動的にユニーク名が付与される（例: `_1.mov`, `_2.mov`）
-
-**出力オーディオフォーマット（本スキルでは常に `--audio-output apac` を指定）:**
-
-| 入力（主・Ambisonics） | 主トラック出力 |
-|------------------------|----------------|
-| APAC | APAC（コピー） |
-| LPCM | APAC（エンコード） |
-
-映像内のモノ/ステレオは上表の対象外で、検出された場合は **元のコーデックのまま** 第2トラックに追加される。
-
-### 6) 成功確認（各変換ごと）
-
-**標準出力で確認:**
-- `Conversion completed: ...` が出力される
-- `Output file verification completed` が出力される
-
-**ファイルの存在確認:**
-```bash
-ls -lh workspace/output/<output>.mov
-```
-
-### 7) 全体サマリを表示
-
-全ての `.mov` の処理が終わったら、以下を表示します。
-
-```
-## 処理結果サマリ
-
-### 検出されたファイル
-- `.mov`ファイル: X件
-
-### 変換結果
-- ✅ 成功した変換: Y件
-- ❌ スキップした`.mov`: Z件
-- ❌ 失敗した変換: W件
-
-### 統計
-- 成功: Y件
-- スキップ: Z件
-- 失敗: W件
-```
-
-**スキップしたファイルのリスト:**
-```
-スキップした`.mov`:
-- filename1.mov (理由: 外部オーディオなし・埋め込みオーディオも対象外)
-```
-
-**失敗したファイルのリスト:**
-```
-失敗した変換:
-- filename2.mov (エラー: Cannot Encode)
-```
-
-## フォルダ管理
-
-フォルダ作成はワークフローの 1) で行う。
-
-### フォルダ構造
+## フォルダ構造
 
 ```
 workspace/
-├── mux-input/        # 入力ファイル（.mov + オーディオファイル）
-└── output/           # 出力ファイル（変換済み .mov）
+├── mux-input/        # 入力（.mov + 任意の外部オーディオ）
+└── output/           # 出力（変換済み .mov）
 ```
 
-**注意:**
-- `workspace/` は `.gitignore` されており、変換用の入出力置き場として使える
-- 出力は常に `.mov` 形式
+`workspace/` は `.gitignore` 想定。出力は常に `.mov`。
 
 ## エラーハンドリング
 
@@ -202,7 +53,7 @@ workspace/
 
 **原因:**
 - 外部オーディオパス: `--audio` ファイルが 4・9・16 チャンネルの LPCM ではない
-- 埋め込みパス: 映像内に **Ambisonics として解釈できる 4・9・16 チャンネル** のトラックがない（`ffprobe` 確認漏れ）。モノ/ステレオだけでは主トラックを構成できない
+- 埋め込みパス: 映像内に **Ambisonics として解釈できる 4・9・16 チャンネル** のトラックがない。モノ/ステレオだけでは主トラックを構成できない
 
 **対処:**
 - チャンネル数を確認: `ffprobe -v error -show_streams -select_streams a <file>`
@@ -235,4 +86,4 @@ workspace/
 
 ## 例
 
-具体例は [examples.md](examples.md) を参照。
+入力ファイルの組み合わせの参考は [examples.md](examples.md)。実行手順は上記 **batch-mux.sh** のみとする。
