@@ -140,17 +140,20 @@ private func pump(
     queueLabel: String,
     qos: DispatchQoS,
     finishedFlag: OSAllocatedUnfairLock<Bool>,
-    mapSampleBuffer: ((_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil
+    mapSampleBuffer: ((_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil,
+    onAppendedSample: ((CMSampleBuffer) -> Void)? = nil
 ) {
     let queue = DispatchQueue(label: queueLabel, qos: qos)
 
     let writerInputRef = UncheckedSendableRef(writerInput)
     let readerOutputRef = UncheckedSendableRef(readerOutput)
     let mapRef = UncheckedSendableRef(mapSampleBuffer)
+    let onAppendedRef = UncheckedSendableRef(onAppendedSample)
     writerInput.requestMediaDataWhenReady(on: queue) {
         let writerInput = writerInputRef.value
         let readerOutput = readerOutputRef.value
         let mapSampleBuffer = mapRef.value
+        let onAppendedSample = onAppendedRef.value
 
         while writerInput.isReadyForMoreMediaData && !(finishedFlag.withLock { $0 }) {
             if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
@@ -166,6 +169,7 @@ private func pump(
                         finishedFlag.withLock { $0 = true }
                         return
                     }
+                    onAppendedSample?(toAppend)
                 } catch {
                     writerInput.markAsFinished()
                     finishedFlag.withLock { $0 = true }
@@ -179,13 +183,24 @@ private func pump(
     }
 }
 
+private func fractionFromSampleBuffer(
+    _ buffer: CMSampleBuffer,
+    trackDurationSeconds: Double
+) -> Double {
+    let denom = max(trackDurationSeconds, 1e-9)
+    let pts = CMTimeGetSeconds(buffer.presentationTimeStamp)
+    return min(1.0, max(0.0, pts / denom))
+}
+
 // Process video and audio and output to MOV file
 func convertVideoWithAudioToMOV(
     audioPath: String,
     audioMode: AudioInputMode,
     videoPath: String,
     outputPath: String,
-    outputAudioFormat: AudioOutputFormat? = nil
+    outputAudioFormat: AudioOutputFormat? = nil,
+    progress: (@Sendable (Double) -> Void)? = nil,
+    progressInterval: Duration? = nil
 ) async throws {
     let audioURL = URL(fileURLWithPath: audioPath)
     let videoURL = URL(fileURLWithPath: videoPath)
@@ -300,6 +315,60 @@ func convertVideoWithAudioToMOV(
         }
     }
 
+    var onVideoSample: ((CMSampleBuffer) -> Void)?
+    var onAmbisonicsSample: ((CMSampleBuffer) -> Void)?
+    var onFallbackSample: ((CMSampleBuffer) -> Void)?
+    var progressTicker: (
+        interval: Duration,
+        report: @Sendable (Double) -> Void,
+        fraction: OSAllocatedUnfairLock<Double>
+    )?
+
+    if let progress {
+        let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            throw AmbiMuxError.videoTrackNotFound
+        }
+        let videoTimeRange = try await videoTrack.load(.timeRange)
+        let videoDenom = max(CMTimeGetSeconds(videoTimeRange.duration), 1e-9)
+        let ambisonicsTimeRange = try await ambisonicsTrack.load(.timeRange)
+        let ambisonicsDenom = max(CMTimeGetSeconds(ambisonicsTimeRange.duration), 1e-9)
+        let fallbackDenom: Double?
+        if let fb = fallbackAudioPipeline {
+            let fbTimeRange = try await fb.readerOutput.track.load(.timeRange)
+            fallbackDenom = max(CMTimeGetSeconds(fbTimeRange.duration), 1e-9)
+        } else {
+            fallbackDenom = nil
+        }
+
+        let fractionLock = OSAllocatedUnfairLock<Double>(initialState: 0.0)
+        let interval = progressInterval ?? .milliseconds(250)
+        progressTicker = (interval, progress, fractionLock)
+
+        onVideoSample = { buf in
+            let f = fractionFromSampleBuffer(buf, trackDurationSeconds: videoDenom)
+            fractionLock.withLock { $0 = max($0, f) }
+        }
+        onAmbisonicsSample = { buf in
+            let f = fractionFromSampleBuffer(buf, trackDurationSeconds: ambisonicsDenom)
+            fractionLock.withLock { $0 = max($0, f) }
+        }
+        if fallbackDenom != nil {
+            let fd = fallbackDenom!
+            onFallbackSample = { buf in
+                let f = fractionFromSampleBuffer(buf, trackDurationSeconds: fd)
+                fractionLock.withLock { $0 = max($0, f) }
+            }
+        } else {
+            onFallbackSample = nil
+        }
+    } else {
+        onVideoSample = nil
+        onAmbisonicsSample = nil
+        onFallbackSample = nil
+        progressTicker = nil
+    }
+
     // Create AVAssetWriter
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
     let videoInput = videoPipeline.writerInput
@@ -354,7 +423,8 @@ func convertVideoWithAudioToMOV(
         readerOutput: videoPipeline.readerOutput,
         queueLabel: "jp.objective-audio.ambimux.video",
         qos: .userInitiated,
-        finishedFlag: videoFinished
+        finishedFlag: videoFinished,
+        onAppendedSample: onVideoSample
     )
     pump(
         writerInput: ambisonicsAudioInput,
@@ -362,7 +432,8 @@ func convertVideoWithAudioToMOV(
         queueLabel: "jp.objective-audio.ambimux.audio.ambisonics",
         qos: .userInitiated,
         finishedFlag: audioFinished,
-        mapSampleBuffer: ambisonicsMapSampleBuffer
+        mapSampleBuffer: ambisonicsMapSampleBuffer,
+        onAppendedSample: onAmbisonicsSample
     )
     if let fallbackAudioPipeline, let fallbackAudioInput {
         pump(
@@ -370,20 +441,36 @@ func convertVideoWithAudioToMOV(
             readerOutput: fallbackAudioPipeline.readerOutput,
             queueLabel: "jp.objective-audio.ambimux.audio.fallback",
             qos: .userInitiated,
-            finishedFlag: fallbackFinished
+            finishedFlag: fallbackFinished,
+            onAppendedSample: onFallbackSample
         )
     }
 
-    // Wait for async processing using Task
-    try await Task {
-        // Wait until all processing is complete
-        while !(audioFinished.withLock { $0 })
-            || !(videoFinished.withLock { $0 })
-            || !(fallbackFinished.withLock { $0 })
-        {
-            try await Task.sleep(for: .milliseconds(10))
+    let allPumpsFinished: @Sendable () -> Bool = {
+        audioFinished.withLock { $0 } && videoFinished.withLock { $0 }
+            && fallbackFinished.withLock { $0 }
+    }
+
+    try await withThrowingTaskGroup(of: Void.self) { group in
+        group.addTask {
+            while !allPumpsFinished() {
+                try await Task.sleep(for: .milliseconds(10))
+            }
         }
-    }.value
+        if let ticker = progressTicker {
+            let interval = ticker.interval
+            let report = ticker.report
+            let fractionLock = ticker.fraction
+            group.addTask {
+                while !allPumpsFinished() {
+                    try await Task.sleep(for: interval)
+                    report(fractionLock.withLock { $0 })
+                }
+                report(1.0)
+            }
+        }
+        for try await _ in group {}
+    }
 
     // Use async version of finishWriting
     await assetWriter.finishWriting()
