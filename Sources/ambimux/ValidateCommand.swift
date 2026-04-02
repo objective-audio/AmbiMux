@@ -33,7 +33,7 @@ struct ValidateCommand: AsyncParsableCommand {
             if result.isEligible {
                 return
             }
-            throw ValidationError("Convertible: NO (\(result.reason))")
+            throw ValidationError("Convertible: NO (\(result.reason.message))")
         }
 
         let audioPath = audioFilePath!
@@ -41,6 +41,6 @@ struct ValidateCommand: AsyncParsableCommand {
         if result.isEligible {
             return
         }
-        throw ValidationError("Convertible: NO (\(result.reason))")
+        throw ValidationError("Convertible: NO (\(result.reason.message))")
     }
 }

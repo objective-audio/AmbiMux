@@ -4,7 +4,7 @@ import Foundation
 
 struct ConversionEligibilityStatus {
     let isEligible: Bool
-    let reason: String
+    let reason: ConversionEligibilityReason
 }
 
 // Detect audio input mode from file format
@@ -126,7 +126,7 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
     guard !audioTracks.isEmpty else {
         return ConversionEligibilityStatus(
             isEligible: false,
-            reason: "No audio tracks found"
+            reason: .noAudioTracksFound
         )
     }
 
@@ -154,18 +154,18 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
     if hasAPAC {
         return ConversionEligibilityStatus(
             isEligible: false,
-            reason: "APAC track is already present in the video"
+            reason: .videoAlreadyHasAPAC
         )
     }
     if !hasAmbisonics {
         return ConversionEligibilityStatus(
             isEligible: false,
-            reason: "No Ambisonics track (4/9/16ch) found in the video"
+            reason: .videoMissingAmbisonics
         )
     }
     return ConversionEligibilityStatus(
         isEligible: true,
-        reason: "Ambisonics is present and APAC is not present"
+        reason: .videoAmbisonicsWithoutAPAC
     )
 }
 
@@ -176,12 +176,13 @@ nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -
     guard !audioTracks.isEmpty else {
         return ConversionEligibilityStatus(
             isEligible: false,
-            reason: "No audio tracks found"
+            reason: .noAudioTracksFound
         )
     }
 
     var hasAPAC = false
     var hasAmbisonics = false
+    var detectedOrder: AmbisonicsOrder?
 
     for track in audioTracks {
         let formatDescriptions = try await track.load(.formatDescriptions)
@@ -196,26 +197,29 @@ nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -
         }
 
         let channels = Int(asbd.mChannelsPerFrame)
-        if AmbisonicsOrder(channelCount: channels) != nil {
+        if let order = AmbisonicsOrder(channelCount: channels) {
             hasAmbisonics = true
+            if detectedOrder == nil {
+                detectedOrder = order
+            }
         }
     }
 
     if hasAPAC {
         return ConversionEligibilityStatus(
             isEligible: true,
-            reason: "APAC audio is present"
+            reason: .audioHasAPAC
         )
     }
-    if hasAmbisonics {
+    if hasAmbisonics, let order = detectedOrder {
         return ConversionEligibilityStatus(
             isEligible: true,
-            reason: "Ambisonics audio (4/9/16ch) is present"
+            reason: .audioHasAmbisonics(order: order)
         )
     }
     return ConversionEligibilityStatus(
         isEligible: false,
-        reason: "Neither APAC nor Ambisonics (4/9/16ch) audio is present"
+        reason: .audioMissingAPACAndAmbisonics
     )
 }
 
