@@ -1,6 +1,16 @@
 import AVFoundation
 import Foundation
 
+public struct ConversionEligibility: Sendable {
+    nonisolated public let isEligible: Bool
+    nonisolated public let reason: String
+
+    nonisolated public init(isEligible: Bool, reason: String) {
+        self.isEligible = isEligible
+        self.reason = reason
+    }
+}
+
 nonisolated public func runAmbiMux(
     audioPath: String?,
     videoPath: String,
@@ -41,4 +51,14 @@ nonisolated public func runAmbiMux(
 
     // Verify output file
     try await verifyOutputFileDetails(outputPath: finalOutputPath)
+}
+
+nonisolated public func validateVideoInputEligibility(videoPath: String) async throws -> ConversionEligibility {
+    let result = try await evaluateVideoInputEligibility(videoPath: videoPath)
+    return ConversionEligibility(isEligible: result.isEligible, reason: result.reason)
+}
+
+nonisolated public func validateAudioInputEligibility(audioPath: String) async throws -> ConversionEligibility {
+    let result = try await evaluateAudioInputEligibility(audioPath: audioPath)
+    return ConversionEligibility(isEligible: result.isEligible, reason: result.reason)
 }
