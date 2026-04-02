@@ -2,6 +2,11 @@ import AVFoundation
 import CoreAudioTypes
 import Foundation
 
+struct ConversionEligibilityStatus {
+    let isEligible: Bool
+    let reason: ConversionEligibilityReason
+}
+
 // Detect audio input mode from file format
 nonisolated func detectAudioInputMode(audioPath: String) async throws -> AudioInputMode {
     let audioAsset = AVURLAsset(url: URL(fileURLWithPath: audioPath))
@@ -112,6 +117,110 @@ nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
     if try await isTrackAPAC(scanResult.ambisonics) {
         throw AmbiMuxError.embeddedAmbisonicsAlreadyAPAC
     }
+}
+
+nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -> ConversionEligibilityStatus {
+    let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
+    let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
+
+    guard !audioTracks.isEmpty else {
+        return ConversionEligibilityStatus(
+            isEligible: false,
+            reason: .noAudioTracksFound
+        )
+    }
+
+    var hasAPAC = false
+    var hasAmbisonics = false
+
+    for track in audioTracks {
+        let formatDescriptions = try await track.load(.formatDescriptions)
+        guard let formatDescription = formatDescriptions.first,
+            let asbd = formatDescription.audioStreamBasicDescription
+        else {
+            continue
+        }
+
+        if asbd.mFormatID == kAudioFormatAPAC {
+            hasAPAC = true
+        }
+
+        let channels = Int(asbd.mChannelsPerFrame)
+        if AmbisonicsOrder(channelCount: channels) != nil {
+            hasAmbisonics = true
+        }
+    }
+
+    if hasAPAC {
+        return ConversionEligibilityStatus(
+            isEligible: false,
+            reason: .videoAlreadyHasAPAC
+        )
+    }
+    if !hasAmbisonics {
+        return ConversionEligibilityStatus(
+            isEligible: false,
+            reason: .videoMissingAmbisonics
+        )
+    }
+    return ConversionEligibilityStatus(
+        isEligible: true,
+        reason: .videoAmbisonicsWithoutAPAC
+    )
+}
+
+nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -> ConversionEligibilityStatus {
+    let audioAsset = AVURLAsset(url: URL(fileURLWithPath: audioPath))
+    let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
+
+    guard !audioTracks.isEmpty else {
+        return ConversionEligibilityStatus(
+            isEligible: false,
+            reason: .noAudioTracksFound
+        )
+    }
+
+    var hasAPAC = false
+    var hasAmbisonics = false
+    var detectedOrder: AmbisonicsOrder?
+
+    for track in audioTracks {
+        let formatDescriptions = try await track.load(.formatDescriptions)
+        guard let formatDescription = formatDescriptions.first,
+            let asbd = formatDescription.audioStreamBasicDescription
+        else {
+            continue
+        }
+
+        if asbd.mFormatID == kAudioFormatAPAC {
+            hasAPAC = true
+        }
+
+        let channels = Int(asbd.mChannelsPerFrame)
+        if let order = AmbisonicsOrder(channelCount: channels) {
+            hasAmbisonics = true
+            if detectedOrder == nil {
+                detectedOrder = order
+            }
+        }
+    }
+
+    if hasAPAC {
+        return ConversionEligibilityStatus(
+            isEligible: true,
+            reason: .audioHasAPAC
+        )
+    }
+    if hasAmbisonics, let order = detectedOrder {
+        return ConversionEligibilityStatus(
+            isEligible: true,
+            reason: .audioHasAmbisonics(order: order)
+        )
+    }
+    return ConversionEligibilityStatus(
+        isEligible: false,
+        reason: .audioMissingAPACAndAmbisonics
+    )
 }
 
 // Display detailed information of output file
