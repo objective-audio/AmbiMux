@@ -42,14 +42,14 @@ public struct ConversionEligibility: Sendable {
     }
 }
 
-nonisolated public func runAmbiMux(
+nonisolated private func runAmbiMuxCore(
     audioPath: String?,
     videoPath: String,
-    outputPath: String? = nil,
-    outputAudioFormat: AudioOutputFormat? = nil
-)
-    async throws
-{
+    outputPath: String?,
+    outputAudioFormat: AudioOutputFormat?,
+    progressInterval: Duration?,
+    progress: (@Sendable (Double) -> Void)?
+) async throws {
     let audioMode: AudioInputMode
     let actualAudioPath: String
 
@@ -62,26 +62,69 @@ nonisolated public func runAmbiMux(
         actualAudioPath = videoPath
     }
 
-    // APAC 入力に対して lpcm 出力は指定できない
     if case .apac = audioMode, outputAudioFormat == .lpcm {
         throw AmbiMuxError.invalidOutputFormatForAPACInput
     }
 
-    // Generate output file path
     let finalOutputPath = generateOutputPath(
         outputPath: outputPath, videoPath: videoPath)
 
-    // Execute conversion
     try await convertVideoWithAudioToMOV(
         audioPath: actualAudioPath,
         audioMode: audioMode,
         videoPath: videoPath,
         outputPath: finalOutputPath,
-        outputAudioFormat: outputAudioFormat
+        outputAudioFormat: outputAudioFormat,
+        progress: progress,
+        progressInterval: progressInterval
     )
 
-    // Verify output file
     try await verifyOutputFileDetails(outputPath: finalOutputPath)
+}
+
+nonisolated public func runAmbiMux(
+    audioPath: String?,
+    videoPath: String,
+    outputPath: String? = nil,
+    outputAudioFormat: AudioOutputFormat? = nil,
+    progressInterval: Duration? = nil,
+    progress: (@Sendable (Double) -> Void)? = nil
+) async throws {
+    try await runAmbiMuxCore(
+        audioPath: audioPath,
+        videoPath: videoPath,
+        outputPath: outputPath,
+        outputAudioFormat: outputAudioFormat,
+        progressInterval: progressInterval,
+        progress: progress
+    )
+}
+
+/// 変換の進捗（0.0〜1.0）を `progressInterval` ごとに `AsyncThrowingStream` で yield する。
+nonisolated public func runAmbiMuxProgressStream(
+    audioPath: String?,
+    videoPath: String,
+    outputPath: String? = nil,
+    outputAudioFormat: AudioOutputFormat? = nil,
+    progressInterval: Duration = .milliseconds(250)
+) -> AsyncThrowingStream<Double, Error> {
+    AsyncThrowingStream { continuation in
+        Task {
+            do {
+                try await runAmbiMuxCore(
+                    audioPath: audioPath,
+                    videoPath: videoPath,
+                    outputPath: outputPath,
+                    outputAudioFormat: outputAudioFormat,
+                    progressInterval: progressInterval,
+                    progress: { continuation.yield($0) }
+                )
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+    }
 }
 
 nonisolated public func validateVideoInputEligibility(videoPath: String) async throws -> ConversionEligibility {

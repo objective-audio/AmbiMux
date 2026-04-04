@@ -307,4 +307,46 @@ struct RunAmbiMuxTests {
             channelCount2 == 2,
             "Track 2 should be stereo fallback with 2 channels, got \(channelCount2)")
     }
+
+    @Test func testRunAmbiMuxProgressStreamYieldsPeriodically() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
+            "runAmbi_progress_stream.mov"
+        ).path
+
+        let stream = runAmbiMuxProgressStream(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: outputPath,
+            progressInterval: .milliseconds(50)
+        )
+
+        var values: [Double] = []
+        var priorDate: Date?
+        for try await p in stream {
+            let now = Date()
+            if let prior = priorDate {
+                let deltaMs = now.timeIntervalSince(prior) * 1000
+                // 完了直後の 1.0 は定期 sleep を挟まずに続くことがある
+                if !(p >= 0.999 && deltaMs < 15) {
+                    #expect(
+                        deltaMs >= 25,
+                        "expected yields at least ~50ms apart, got \(deltaMs) ms"
+                    )
+                }
+            }
+            priorDate = now
+            values.append(p)
+        }
+
+        #expect(!values.isEmpty)
+        #expect((values.last ?? 0) >= 0.99)
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists)
+    }
 }
