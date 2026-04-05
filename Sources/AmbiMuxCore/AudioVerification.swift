@@ -3,11 +3,6 @@ import CoreAudioTypes
 import CoreMedia
 import Foundation
 
-struct ConversionEligibilityStatus {
-    let isEligible: Bool
-    let reason: ConversionEligibilityReason
-}
-
 // Detect audio input mode from file format
 nonisolated func detectAudioInputMode(audioPath: String) async throws -> AudioInputMode {
     let audioAsset = AVURLAsset(url: URL(fileURLWithPath: audioPath))
@@ -136,15 +131,12 @@ nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
     }
 }
 
-nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -> ConversionEligibilityStatus {
+nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -> VideoValidationResult {
     let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
     let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
 
     guard !audioTracks.isEmpty else {
-        return ConversionEligibilityStatus(
-            isEligible: false,
-            reason: .noAudioTracksFound
-        )
+        return .eligible(.noEmbeddedAudioUseExternal)
     }
 
     var hasAPAC = false
@@ -161,10 +153,7 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
         if hasNonAPACWithHOALayoutTag(
             formatDescription: formatDescription, formatID: asbd.mFormatID)
         {
-            return ConversionEligibilityStatus(
-                isEligible: false,
-                reason: .nonAPACWithHOALayoutTag
-            )
+            return .ineligible(.nonAPACWithHOALayoutTag)
         }
 
         if asbd.mFormatID == kAudioFormatAPAC {
@@ -178,32 +167,20 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
     }
 
     if hasAPAC {
-        return ConversionEligibilityStatus(
-            isEligible: false,
-            reason: .videoAlreadyHasAPAC
-        )
+        return .ineligible(.alreadyHasAPAC)
     }
     if !hasAmbisonics {
-        return ConversionEligibilityStatus(
-            isEligible: false,
-            reason: .videoMissingAmbisonics
-        )
+        return .ineligible(.missingAmbisonicsTrack)
     }
-    return ConversionEligibilityStatus(
-        isEligible: true,
-        reason: .videoAmbisonicsWithoutAPAC
-    )
+    return .eligible(.ambisonicsWithoutAPAC)
 }
 
-nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -> ConversionEligibilityStatus {
+nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -> AudioValidationResult {
     let audioAsset = AVURLAsset(url: URL(fileURLWithPath: audioPath))
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
 
     guard !audioTracks.isEmpty else {
-        return ConversionEligibilityStatus(
-            isEligible: false,
-            reason: .noAudioTracksFound
-        )
+        return .ineligible(.noAudioTracks)
     }
 
     var hasAPAC = false
@@ -221,10 +198,7 @@ nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -
         if hasNonAPACWithHOALayoutTag(
             formatDescription: formatDescription, formatID: asbd.mFormatID)
         {
-            return ConversionEligibilityStatus(
-                isEligible: false,
-                reason: .nonAPACWithHOALayoutTag
-            )
+            return .ineligible(.nonAPACWithHOALayoutTag)
         }
 
         if asbd.mFormatID == kAudioFormatAPAC {
@@ -241,21 +215,12 @@ nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -
     }
 
     if hasAPAC {
-        return ConversionEligibilityStatus(
-            isEligible: true,
-            reason: .audioHasAPAC
-        )
+        return .eligible(.apac)
     }
     if hasAmbisonics, let order = detectedOrder {
-        return ConversionEligibilityStatus(
-            isEligible: true,
-            reason: .audioHasAmbisonics(order: order)
-        )
+        return .eligible(.ambisonics(order))
     }
-    return ConversionEligibilityStatus(
-        isEligible: false,
-        reason: .audioMissingAPACAndAmbisonics
-    )
+    return .ineligible(.missingAPACAndAmbisonics)
 }
 
 // Display detailed information of output file

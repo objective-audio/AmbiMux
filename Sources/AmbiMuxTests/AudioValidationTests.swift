@@ -39,11 +39,10 @@ struct AudioValidationTests {
         let audioPath = try TestResourceHelper.resourcePath(for: "test_apac", withExtension: "mp4")
         let result = try await validateAudioInputEligibility(audioPath: audioPath)
 
-        #expect(result.isEligible)
-        if case .audioHasAPAC = result.reason {
+        if case .eligible(.apac) = result {
             #expect(Bool(true))
         } else {
-            Issue.record("Expected .audioHasAPAC, got \(result.reason)")
+            Issue.record("Expected .eligible(.apac), got \(result)")
         }
     }
 
@@ -51,11 +50,10 @@ struct AudioValidationTests {
         let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_4ch", withExtension: "wav")
         let result = try await validateAudioInputEligibility(audioPath: audioPath)
 
-        #expect(result.isEligible)
-        if case .audioHasAmbisonics(let order) = result.reason {
+        if case .eligible(.ambisonics(let order)) = result {
             #expect(order == .first)
         } else {
-            Issue.record("Expected .audioHasAmbisonics(order:), got \(result.reason)")
+            Issue.record("Expected .eligible(.ambisonics), got \(result)")
         }
     }
 
@@ -63,11 +61,10 @@ struct AudioValidationTests {
         let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_2ch", withExtension: "wav")
         let result = try await validateAudioInputEligibility(audioPath: audioPath)
 
-        #expect(!result.isEligible)
-        if case .audioMissingAPACAndAmbisonics = result.reason {
+        if case .ineligible(.missingAPACAndAmbisonics) = result {
             #expect(Bool(true))
         } else {
-            Issue.record("Expected .audioMissingAPACAndAmbisonics, got \(result.reason)")
+            Issue.record("Expected .ineligible(.missingAPACAndAmbisonics), got \(result)")
         }
     }
 
@@ -75,11 +72,21 @@ struct AudioValidationTests {
         let videoPath = try TestResourceHelper.resourcePath(for: "test_4ch", withExtension: "mov")
         let result = try await validateVideoInputEligibility(videoPath: videoPath)
 
-        #expect(result.isEligible)
-        if case .videoAmbisonicsWithoutAPAC = result.reason {
+        if case .eligible(.ambisonicsWithoutAPAC) = result {
             #expect(Bool(true))
         } else {
-            Issue.record("Expected .videoAmbisonicsWithoutAPAC, got \(result.reason)")
+            Issue.record("Expected .eligible(.ambisonicsWithoutAPAC), got \(result)")
+        }
+    }
+
+    @Test func testValidateVideoInputEligibilityNoEmbeddedAudio() async throws {
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_no_audio", withExtension: "mov")
+        let result = try await validateVideoInputEligibility(videoPath: videoPath)
+
+        if case .eligible(.noEmbeddedAudioUseExternal) = result {
+            #expect(Bool(true))
+        } else {
+            Issue.record("Expected .eligible(.noEmbeddedAudioUseExternal), got \(result)")
         }
     }
 
@@ -87,11 +94,10 @@ struct AudioValidationTests {
         let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
         let result = try await validateVideoInputEligibility(videoPath: videoPath)
 
-        #expect(!result.isEligible)
-        if case .videoMissingAmbisonics = result.reason {
+        if case .ineligible(.missingAmbisonicsTrack) = result {
             #expect(Bool(true))
         } else {
-            Issue.record("Expected .videoMissingAmbisonics, got \(result.reason)")
+            Issue.record("Expected .ineligible(.missingAmbisonicsTrack), got \(result)")
         }
     }
 
@@ -112,11 +118,10 @@ struct AudioValidationTests {
         )
 
         let result = try await validateVideoInputEligibility(videoPath: apacVideoPath)
-        #expect(!result.isEligible)
-        if case .videoAlreadyHasAPAC = result.reason {
+        if case .ineligible(.alreadyHasAPAC) = result {
             #expect(Bool(true))
         } else {
-            Issue.record("Expected .videoAlreadyHasAPAC, got \(result.reason)")
+            Issue.record("Expected .ineligible(.alreadyHasAPAC), got \(result)")
         }
     }
 }

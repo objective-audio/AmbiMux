@@ -1,48 +1,90 @@
 import AVFoundation
 import Foundation
 
-public nonisolated enum ConversionEligibilityReason: Equatable, Sendable {
-    case noAudioTracksFound
-    case videoAlreadyHasAPAC
-    case videoMissingAmbisonics
-    case videoAmbisonicsWithoutAPAC
-    case nonAPACWithHOALayoutTag
-    case audioHasAPAC
-    case audioHasAmbisonics(order: AmbisonicsOrder)
-    case audioMissingAPACAndAmbisonics
+// MARK: - Video validation
+
+public nonisolated enum VideoValidationSuccess: Equatable, Sendable {
+    case noEmbeddedAudioUseExternal
+    case ambisonicsWithoutAPAC
 }
 
-public extension ConversionEligibilityReason {
+public nonisolated enum VideoValidationFailure: Equatable, Sendable {
+    case nonAPACWithHOALayoutTag
+    case alreadyHasAPAC
+    case missingAmbisonicsTrack
+}
+
+public nonisolated enum VideoValidationResult: Equatable, Sendable {
+    case eligible(VideoValidationSuccess)
+    case ineligible(VideoValidationFailure)
+}
+
+public extension VideoValidationSuccess {
     nonisolated var message: String {
         switch self {
-        case .noAudioTracksFound:
-            return "No audio tracks found"
-        case .videoAlreadyHasAPAC:
-            return "APAC track is already present in the video"
-        case .videoMissingAmbisonics:
-            return "No Ambisonics track (4/9/16ch) found in the video"
-        case .videoAmbisonicsWithoutAPAC:
-            return "Ambisonics is present and APAC is not present"
-        case .nonAPACWithHOALayoutTag:
+        case .noEmbeddedAudioUseExternal:
             return
-                "Non-APAC audio uses HOA ACN SN3D channel layout; expected only with APAC for this workflow"
-        case .audioHasAPAC:
-            return "APAC audio is present"
-        case .audioHasAmbisonics(let order):
-            return "Ambisonics audio is present (order \(order.rawValue), \(order.channelCount)ch)"
-        case .audioMissingAPACAndAmbisonics:
-            return "Neither APAC nor Ambisonics (4/9/16ch) audio is present"
+                "No embedded audio tracks; use --audio with an external spatial audio file when muxing"
+        case .ambisonicsWithoutAPAC:
+            return "Ambisonics is present and APAC is not present"
         }
     }
 }
 
-public struct ConversionEligibility: Sendable {
-    nonisolated public let isEligible: Bool
-    nonisolated public let reason: ConversionEligibilityReason
+public extension VideoValidationFailure {
+    nonisolated var message: String {
+        switch self {
+        case .nonAPACWithHOALayoutTag:
+            return
+                "Non-APAC audio uses HOA ACN SN3D channel layout; expected only with APAC for this workflow"
+        case .alreadyHasAPAC:
+            return "APAC track is already present in the video"
+        case .missingAmbisonicsTrack:
+            return "No Ambisonics track (4/9/16ch) found in the video"
+        }
+    }
+}
 
-    nonisolated public init(isEligible: Bool, reason: ConversionEligibilityReason) {
-        self.isEligible = isEligible
-        self.reason = reason
+// MARK: - Audio validation
+
+public nonisolated enum AudioValidationSuccess: Equatable, Sendable {
+    case apac
+    case ambisonics(AmbisonicsOrder)
+}
+
+public nonisolated enum AudioValidationFailure: Equatable, Sendable {
+    case noAudioTracks
+    case nonAPACWithHOALayoutTag
+    case missingAPACAndAmbisonics
+}
+
+public nonisolated enum AudioValidationResult: Equatable, Sendable {
+    case eligible(AudioValidationSuccess)
+    case ineligible(AudioValidationFailure)
+}
+
+public extension AudioValidationSuccess {
+    nonisolated var message: String {
+        switch self {
+        case .apac:
+            return "APAC audio is present"
+        case .ambisonics(let order):
+            return "Ambisonics audio is present (order \(order.rawValue), \(order.channelCount)ch)"
+        }
+    }
+}
+
+public extension AudioValidationFailure {
+    nonisolated var message: String {
+        switch self {
+        case .noAudioTracks:
+            return "No audio tracks found"
+        case .nonAPACWithHOALayoutTag:
+            return
+                "Non-APAC audio uses HOA ACN SN3D channel layout; expected only with APAC for this workflow"
+        case .missingAPACAndAmbisonics:
+            return "Neither APAC nor Ambisonics (4/9/16ch) audio is present"
+        }
     }
 }
 
@@ -88,12 +130,10 @@ nonisolated public func runAmbiMux(
     try await verifyOutputFileDetails(outputPath: finalOutputPath)
 }
 
-nonisolated public func validateVideoInputEligibility(videoPath: String) async throws -> ConversionEligibility {
-    let result = try await evaluateVideoInputEligibility(videoPath: videoPath)
-    return ConversionEligibility(isEligible: result.isEligible, reason: result.reason)
+nonisolated public func validateVideoInputEligibility(videoPath: String) async throws -> VideoValidationResult {
+    try await evaluateVideoInputEligibility(videoPath: videoPath)
 }
 
-nonisolated public func validateAudioInputEligibility(audioPath: String) async throws -> ConversionEligibility {
-    let result = try await evaluateAudioInputEligibility(audioPath: audioPath)
-    return ConversionEligibility(isEligible: result.isEligible, reason: result.reason)
+nonisolated public func validateAudioInputEligibility(audioPath: String) async throws -> AudioValidationResult {
+    try await evaluateAudioInputEligibility(audioPath: audioPath)
 }
