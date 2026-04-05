@@ -3,6 +3,7 @@ import Foundation
 
 public nonisolated enum ConversionEligibilityReason: Equatable, Sendable {
     case noAudioTracksFound
+    case videoNoEmbeddedAudio
     case videoAlreadyHasAPAC
     case videoMissingAmbisonics
     case videoAmbisonicsWithoutAPAC
@@ -17,6 +18,9 @@ public extension ConversionEligibilityReason {
         switch self {
         case .noAudioTracksFound:
             return "No audio tracks found"
+        case .videoNoEmbeddedAudio:
+            return
+                "No embedded audio tracks; use --audio with an external spatial audio file when muxing"
         case .videoAlreadyHasAPAC:
             return "APAC track is already present in the video"
         case .videoMissingAmbisonics:

@@ -142,8 +142,8 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
 
     guard !audioTracks.isEmpty else {
         return ConversionEligibilityStatus(
-            isEligible: false,
-            reason: .noAudioTracksFound
+            isEligible: true,
+            reason: .videoNoEmbeddedAudio
         )
     }
 

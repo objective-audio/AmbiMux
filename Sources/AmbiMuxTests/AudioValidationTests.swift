@@ -83,6 +83,18 @@ struct AudioValidationTests {
         }
     }
 
+    @Test func testValidateVideoInputEligibilityNoEmbeddedAudio() async throws {
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_no_audio", withExtension: "mov")
+        let result = try await validateVideoInputEligibility(videoPath: videoPath)
+
+        #expect(result.isEligible)
+        if case .videoNoEmbeddedAudio = result.reason {
+            #expect(Bool(true))
+        } else {
+            Issue.record("Expected .videoNoEmbeddedAudio, got \(result.reason)")
+        }
+    }
+
     @Test func testValidateVideoInputEligibilityMissingAmbisonics() async throws {
         let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
         let result = try await validateVideoInputEligibility(videoPath: videoPath)
