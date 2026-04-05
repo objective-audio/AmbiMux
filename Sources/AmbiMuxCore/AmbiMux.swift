@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-public nonisolated enum ConversionEligibilityReason: Sendable {
+public nonisolated enum ConversionEligibilityReason: Equatable, Sendable {
     case noAudioTracksFound
     case videoAlreadyHasAPAC
     case videoMissingAmbisonics

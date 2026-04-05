@@ -1,4 +1,4 @@
-public nonisolated enum AmbisonicsOrder: Int, CaseIterable, Sendable {
+public nonisolated enum AmbisonicsOrder: Int, CaseIterable, Equatable, Sendable {
     case first = 1
     case second = 2
     case third = 3
