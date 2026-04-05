@@ -29,18 +29,20 @@ struct ValidateCommand: AsyncParsableCommand {
         }
 
         if let videoPath = videoFilePath {
-            let result = try await validateVideoInputEligibility(videoPath: videoPath)
-            if result.isEligible {
+            switch try await validateVideoInputEligibility(videoPath: videoPath) {
+            case .eligible:
                 return
+            case .ineligible(let reason):
+                throw ValidationError("Convertible: NO (\(reason.message))")
             }
-            throw ValidationError("Convertible: NO (\(result.reason.message))")
         }
 
         let audioPath = audioFilePath!
-        let result = try await validateAudioInputEligibility(audioPath: audioPath)
-        if result.isEligible {
+        switch try await validateAudioInputEligibility(audioPath: audioPath) {
+        case .eligible:
             return
+        case .ineligible(let reason):
+            throw ValidationError("Convertible: NO (\(reason.message))")
         }
-        throw ValidationError("Convertible: NO (\(result.reason.message))")
     }
 }
