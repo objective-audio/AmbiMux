@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreAudioTypes
+import CoreMedia
 import Foundation
 
 struct ConversionEligibilityStatus {
@@ -109,6 +110,22 @@ nonisolated private func isTrackAPAC(_ track: AVAssetTrack) async throws -> Bool
     return asbd.mFormatID == kAudioFormatAPAC
 }
 
+/// True when the stream is not APAC but `CMFormatDescription` carries HOA ACN SN3D layout metadata.
+nonisolated func hasNonAPACWithHOALayoutTag(
+    formatDescription: CMFormatDescription,
+    formatID: AudioFormatID
+) -> Bool {
+    guard formatID != kAudioFormatAPAC else { return false }
+    var layoutSize: Int = 0
+    guard let channelLayout = CMAudioFormatDescriptionGetChannelLayout(
+        formatDescription, sizeOut: &layoutSize)
+    else {
+        return false
+    }
+    let layoutTag = channelLayout.pointee.mChannelLayoutTag
+    return layoutTag & kAudioChannelLayoutTag_HOA_ACN_SN3D == kAudioChannelLayoutTag_HOA_ACN_SN3D
+}
+
 /// Validates embedded spatial audio before conversion: an Ambisonics track (4/9/16ch) must exist,
 /// and the primary Ambisonics track must not already be APAC (no re-encode needed).
 nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
@@ -139,6 +156,15 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
             let asbd = formatDescription.audioStreamBasicDescription
         else {
             continue
+        }
+
+        if hasNonAPACWithHOALayoutTag(
+            formatDescription: formatDescription, formatID: asbd.mFormatID)
+        {
+            return ConversionEligibilityStatus(
+                isEligible: false,
+                reason: .nonAPACWithHOALayoutTag
+            )
         }
 
         if asbd.mFormatID == kAudioFormatAPAC {
@@ -190,6 +216,15 @@ nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -
             let asbd = formatDescription.audioStreamBasicDescription
         else {
             continue
+        }
+
+        if hasNonAPACWithHOALayoutTag(
+            formatDescription: formatDescription, formatID: asbd.mFormatID)
+        {
+            return ConversionEligibilityStatus(
+                isEligible: false,
+                reason: .nonAPACWithHOALayoutTag
+            )
         }
 
         if asbd.mFormatID == kAudioFormatAPAC {
