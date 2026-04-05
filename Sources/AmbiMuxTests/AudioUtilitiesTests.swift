@@ -215,6 +215,29 @@ struct AudioUtilitiesTests {
         #expect(layoutTag & kAudioChannelLayoutTag_HOA_ACN_SN3D == kAudioChannelLayoutTag_HOA_ACN_SN3D)
     }
 
+    @Test func testHasNonAPACWithHOALayoutTagLpcmWithHOA() throws {
+        let original = try makeInterleavedFloat4chFormatDescription()
+        let copied = try copyAudioFormatDescriptionWithHOALayout(from: original, channelCount: 4)
+        let asbd = try #require(CMAudioFormatDescriptionGetStreamBasicDescription(copied))
+        #expect(
+            hasNonAPACWithHOALayoutTag(
+                formatDescription: copied, formatID: asbd.pointee.mFormatID))
+    }
+
+    @Test func testHasNonAPACWithHOALayoutTagPlainLpcm() throws {
+        let plain = try makeInterleavedFloat4chFormatDescription()
+        let asbd = try #require(CMAudioFormatDescriptionGetStreamBasicDescription(plain))
+        #expect(
+            !hasNonAPACWithHOALayoutTag(
+                formatDescription: plain, formatID: asbd.pointee.mFormatID))
+    }
+
+    @Test func testHasNonAPACWithHOALayoutTagIgnoresWhenFormatIDIsAPAC() throws {
+        let copied = try copyAudioFormatDescriptionWithHOALayout(
+            from: try makeInterleavedFloat4chFormatDescription(), channelCount: 4)
+        #expect(!hasNonAPACWithHOALayoutTag(formatDescription: copied, formatID: kAudioFormatAPAC))
+    }
+
     @Test func testCopyAudioFormatDescriptionWithHOALayoutInvalidChannelCount() throws {
         let original = try makeInterleavedFloat4chFormatDescription()
         #expect(throws: AmbiMuxError.invalidChannelCount(count: 3)) {

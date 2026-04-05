@@ -6,6 +6,7 @@ public nonisolated enum ConversionEligibilityReason: Sendable {
     case videoAlreadyHasAPAC
     case videoMissingAmbisonics
     case videoAmbisonicsWithoutAPAC
+    case nonAPACWithHOALayoutTag
     case audioHasAPAC
     case audioHasAmbisonics(order: AmbisonicsOrder)
     case audioMissingAPACAndAmbisonics
@@ -22,6 +23,9 @@ public extension ConversionEligibilityReason {
             return "No Ambisonics track (4/9/16ch) found in the video"
         case .videoAmbisonicsWithoutAPAC:
             return "Ambisonics is present and APAC is not present"
+        case .nonAPACWithHOALayoutTag:
+            return
+                "Non-APAC audio uses HOA ACN SN3D channel layout; expected only with APAC for this workflow"
         case .audioHasAPAC:
             return "APAC audio is present"
         case .audioHasAmbisonics(let order):
