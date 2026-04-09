@@ -90,6 +90,17 @@ struct AudioValidationTests {
         }
     }
 
+    @Test func testValidateVideoInputEligibilityNoVideoTracks() async throws {
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_48k_2ch", withExtension: "wav")
+        let result = try await validateVideoInputEligibility(videoPath: videoPath)
+
+        if case .ineligible(.noVideoTracks) = result {
+            #expect(Bool(true))
+        } else {
+            Issue.record("Expected .ineligible(.noVideoTracks), got \(result)")
+        }
+    }
+
     @Test func testValidateVideoInputEligibilityNonSpatialEmbeddedAudio() async throws {
         let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
         let result = try await validateVideoInputEligibility(videoPath: videoPath)

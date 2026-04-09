@@ -133,6 +133,11 @@ nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
 
 nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -> VideoValidationResult {
     let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
+    let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
+    guard !videoTracks.isEmpty else {
+        return .ineligible(.noVideoTracks)
+    }
+
     let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
 
     guard !audioTracks.isEmpty else {

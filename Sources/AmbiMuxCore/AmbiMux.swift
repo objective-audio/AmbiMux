@@ -10,6 +10,7 @@ public nonisolated enum VideoValidationSuccess: Equatable, Sendable {
 }
 
 public nonisolated enum VideoValidationFailure: Equatable, Sendable {
+    case noVideoTracks
     case nonAPACWithHOALayoutTag
     case alreadyHasAPAC
     case missingAmbisonicsTrack
@@ -37,6 +38,8 @@ public extension VideoValidationSuccess {
 public extension VideoValidationFailure {
     nonisolated var message: String {
         switch self {
+        case .noVideoTracks:
+            return "No video tracks found"
         case .nonAPACWithHOALayoutTag:
             return
                 "Non-APAC audio uses HOA ACN SN3D channel layout; expected only with APAC for this workflow"
