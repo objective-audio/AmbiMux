@@ -169,10 +169,10 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
     if hasAPAC {
         return .ineligible(.alreadyHasAPAC)
     }
-    if !hasAmbisonics {
-        return .ineligible(.missingAmbisonicsTrack)
+    if hasAmbisonics {
+        return .eligible(.ambisonicsWithoutAPAC)
     }
-    return .eligible(.ambisonicsWithoutAPAC)
+    return .eligible(.nonSpatialEmbeddedAudio)
 }
 
 nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -> AudioValidationResult {
