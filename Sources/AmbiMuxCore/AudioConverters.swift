@@ -1,8 +1,7 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreAudioTypes
 import CoreMedia
 import Foundation
-import os
 
 private struct AudioTrackPipeline: Sendable {
     let reader: AVAssetReader
@@ -22,6 +21,40 @@ private struct FallbackAudioTrackPipeline: Sendable {
     let writerInput: AVAssetWriterInput
 }
 
+/// HOA 付け替えの状態。アンビソニクス転送タスク単体からのみ参照する。
+private final class HOAFDMapper: @unchecked Sendable {
+    /// アンビソニクス転送タスク1本のみが参照する（`transferTrackSamples` 内）。
+    nonisolated(unsafe) private var state:
+        (referenceASBD: AudioStreamBasicDescription, hoaFormatDescription: CMFormatDescription)?
+
+    nonisolated func map(_ buf: CMSampleBuffer) throws -> CMSampleBuffer {
+        // マーカー等、format なしのサンプルは HOA 付け替えなしでそのまま通す。
+        guard let fd = buf.formatDescription else {
+            return buf
+        }
+        guard let asbd = fd.audioStreamBasicDescription else {
+            throw AmbiMuxError.couldNotGetAudioStreamDescription
+        }
+        let hoaFD: CMFormatDescription
+        if let existing = state {
+            if existing.referenceASBD.isEquivalentStreamFormat(to: asbd) {
+                hoaFD = existing.hoaFormatDescription
+            } else {
+                throw AmbiMuxError.ambisonicsLpcmFormatChangedMidStream
+            }
+        } else {
+            let channelCount = Int(asbd.mChannelsPerFrame)
+            guard AmbisonicsOrder(channelCount: channelCount) != nil else {
+                throw AmbiMuxError.invalidChannelCount(count: channelCount)
+            }
+            let newFD = try copyAudioFormatDescriptionWithHOALayout(from: fd, channelCount: channelCount)
+            state = (referenceASBD: asbd, hoaFormatDescription: newFD)
+            hoaFD = newFD
+        }
+        return try sampleBufferReplacingFormatDescription(buf, newFormat: hoaFD)
+    }
+}
+
 private func makeFallbackAudioPipelineIfPresent(
     videoAsset: AVURLAsset,
     fallbackTrack audioTrack: AVAssetTrack
@@ -33,14 +66,12 @@ private func makeFallbackAudioPipelineIfPresent(
 
     let fallbackReader = try AVAssetReader(asset: videoAsset)
     let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-    fallbackReader.add(audioReaderOutput)
 
     let audioWriterInput = AVAssetWriterInput(
         mediaType: .audio,
         outputSettings: nil,  // パススルー
         sourceFormatHint: formatDescription
     )
-    audioWriterInput.expectsMediaDataInRealTime = false
 
     return FallbackAudioTrackPipeline(
         reader: fallbackReader,
@@ -67,7 +98,6 @@ private func makeAmbisonicsAudioPipeline(
     // デコードはトラックのネイティブ形式のまま（outputSettings: nil）。HOA は append 直前に CMSampleBuffer の実 formatDescription にだけ付与する。
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
     let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-    audioAssetReader.add(audioReaderOutput)
 
     // lpcm/embeddedLpcm: MOV 書き込み時に CMSampleBuffer を実 ASBD のまま HOA に差し替え。APAC 出力は HOA 付きでエンコード、LPCM 出力はデコード ASBD に合わせた HOA 付き LPCM、それ以外はパススルー。
     let audioInput: AVAssetWriterInput
@@ -108,7 +138,6 @@ private func makeAmbisonicsAudioPipeline(
             sourceFormatHint: formatDescription
         )
     }
-    audioInput.expectsMediaDataInRealTime = false
 
     return AudioTrackPipeline(
         reader: audioAssetReader,
@@ -125,10 +154,8 @@ private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrac
 
     let videoAssetReader = try AVAssetReader(asset: videoAsset)
     let videoReaderOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-    videoAssetReader.add(videoReaderOutput)
 
     let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil)
-    videoInput.expectsMediaDataInRealTime = false
 
     return VideoTrackPipeline(
         reader: videoAssetReader,
@@ -137,46 +164,44 @@ private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrac
     )
 }
 
-private func pump(
-    writerInput: AVAssetWriterInput,
-    readerOutput: AVAssetReaderOutput,
-    queueLabel: String,
-    qos: DispatchQoS,
-    finishedFlag: OSAllocatedUnfairLock<Bool>,
-    mapSampleBuffer: (@Sendable (_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil
-) {
-    let queue = DispatchQueue(label: queueLabel, qos: qos)
+private typealias ReadySampleProvider = AVAssetReaderOutput.Provider<
+    CMReadySampleBuffer<CMSampleBuffer.DynamicContent>
+>
 
-    let writerInputRef = UncheckedSendableRef(writerInput)
-    let readerOutputRef = UncheckedSendableRef(readerOutput)
-    writerInput.requestMediaDataWhenReady(on: queue) {
-        let writerInput = writerInputRef.value
-        let readerOutput = readerOutputRef.value
+nonisolated private func mapReadySampleBuffer(
+    _ ready: CMReadySampleBuffer<CMSampleBuffer.DynamicContent>,
+    mapSampleBuffer: (CMSampleBuffer) throws -> CMSampleBuffer
+) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
+    try ready.withUnsafeSampleBuffer { sampleBuffer in
+        // `mapSampleBuffer` はこのタスク専用。`CMReadySampleBuffer` が所有権を引き取るまでの一時的な橋渡し。
+        nonisolated(unsafe) let mapped = try mapSampleBuffer(sampleBuffer)
+        return CMReadySampleBuffer(unsafeBuffer: mapped)
+    }
+}
 
-        while writerInput.isReadyForMoreMediaData && !(finishedFlag.withLock { $0 }) {
-            if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
-                do {
-                    let toAppend: CMSampleBuffer
-                    if let map = mapSampleBuffer {
-                        toAppend = try map(sampleBuffer)
-                    } else {
-                        toAppend = sampleBuffer
-                    }
-                    guard writerInput.append(toAppend) else {
-                        writerInput.markAsFinished()
-                        finishedFlag.withLock { $0 = true }
-                        return
-                    }
-                } catch {
-                    writerInput.markAsFinished()
-                    finishedFlag.withLock { $0 = true }
-                    return
-                }
-            } else {
-                writerInput.markAsFinished()
-                finishedFlag.withLock { $0 = true }
+/// `outputProvider` のサンプルを `inputReceiver` に転送する。各トラックごとに1タスクで呼ぶ。
+nonisolated private func transferTrackSamples(
+    provider: ReadySampleProvider,
+    receiver: AVAssetWriterInput.SampleBufferReceiver,
+    mapSampleBuffer: (@Sendable (CMSampleBuffer) throws -> CMSampleBuffer)?
+) async throws {
+    do {
+        while true {
+            guard let ready = try await provider.next() else {
+                receiver.finish()
+                return
             }
+            let toAppend: CMReadySampleBuffer<CMSampleBuffer.DynamicContent>
+            if let mapSampleBuffer {
+                toAppend = try mapReadySampleBuffer(ready, mapSampleBuffer: mapSampleBuffer)
+            } else {
+                toAppend = ready
+            }
+            try await receiver.append(toAppend)
         }
+    } catch {
+        receiver.finish()
+        throw error
     }
 }
 
@@ -246,32 +271,9 @@ func convertVideoWithAudioToMOV(
     let ambisonicsMapSampleBuffer: (@Sendable (CMSampleBuffer) throws -> CMSampleBuffer)?
     switch audioMode {
     case .lpcm, .embeddedLpcm:
-        let hoaFDState = OSAllocatedUnfairLock<
-            (referenceASBD: AudioStreamBasicDescription, hoaFormatDescription: CMFormatDescription)?
-        >(initialState: nil)
+        let hoaMapper = HOAFDMapper()
         ambisonicsMapSampleBuffer = { buf in
-            guard let fd = buf.formatDescription else {
-                throw AmbiMuxError.ambisonicsSampleBufferMissingFormatDescription
-            }
-            guard let asbd = fd.audioStreamBasicDescription else {
-                throw AmbiMuxError.couldNotGetAudioStreamDescription
-            }
-            let hoaFD: CMFormatDescription = try hoaFDState.withLock {
-                if let existing = $0 {
-                    if existing.referenceASBD.isEquivalentStreamFormat(to: asbd) {
-                        return existing.hoaFormatDescription
-                    }
-                    throw AmbiMuxError.ambisonicsLpcmFormatChangedMidStream
-                }
-                let channelCount = Int(asbd.mChannelsPerFrame)
-                guard AmbisonicsOrder(channelCount: channelCount) != nil else {
-                    throw AmbiMuxError.invalidChannelCount(count: channelCount)
-                }
-                let newFD = try copyAudioFormatDescriptionWithHOALayout(from: fd, channelCount: channelCount)
-                $0 = (referenceASBD: asbd, hoaFormatDescription: newFD)
-                return newFD
-            }
-            return try sampleBufferReplacingFormatDescription(buf, newFormat: hoaFD)
+            try hoaMapper.map(buf)
         }
     case .apac:
         ambisonicsMapSampleBuffer = nil
@@ -307,16 +309,6 @@ func convertVideoWithAudioToMOV(
     let ambisonicsAudioInput = ambisonicsAudioPipeline.writerInput
     let fallbackAudioInput = fallbackAudioPipeline?.writerInput
 
-    if assetWriter.canAdd(videoInput) {
-        assetWriter.add(videoInput)
-    }
-    if assetWriter.canAdd(ambisonicsAudioInput) {
-        assetWriter.add(ambisonicsAudioInput)
-    }
-    if let fallbackAudioInput, assetWriter.canAdd(fallbackAudioInput) {
-        assetWriter.add(fallbackAudioInput)
-    }
-
     // Configure track metadata for proper fallback behavior
     // The ambisonics track is the primary track, fallback is the alternate
     ambisonicsAudioInput.languageCode = "und"
@@ -340,52 +332,68 @@ func convertVideoWithAudioToMOV(
         }
     }
 
-    // Start reading and writing
+    // `outputProvider` は読み取り開始前、`inputReceiver` は書き込み開始前に取得する（内部で入出力の登録・設定を行う）。
+    let videoProvider = videoPipeline.reader.outputProvider(for: videoPipeline.readerOutput)
+    let ambisonicsProvider = ambisonicsAudioPipeline.reader.outputProvider(
+        for: ambisonicsAudioPipeline.readerOutput)
+    let fallbackProvider: ReadySampleProvider?
+    if let fallbackAudioPipeline {
+        fallbackProvider = fallbackAudioPipeline.reader.outputProvider(for: fallbackAudioPipeline.readerOutput)
+    } else {
+        fallbackProvider = nil
+    }
+
+    let videoReceiver = assetWriter.inputReceiver(for: videoInput)
+    let ambisonicsReceiver = assetWriter.inputReceiver(for: ambisonicsAudioInput)
+    let fallbackReceiver: AVAssetWriterInput.SampleBufferReceiver?
+    if let fallbackAudioInput {
+        fallbackReceiver = assetWriter.inputReceiver(for: fallbackAudioInput)
+    } else {
+        fallbackReceiver = nil
+    }
+
     try assetWriter.start()
-    assetWriter.startSession(atSourceTime: .zero)
+
     try videoPipeline.reader.start()
     try ambisonicsAudioPipeline.reader.start()
     try fallbackAudioPipeline?.reader.start()
 
-    let audioFinished = OSAllocatedUnfairLock(initialState: false)
-    let videoFinished = OSAllocatedUnfairLock(initialState: false)
-    let fallbackFinished = OSAllocatedUnfairLock(initialState: fallbackAudioPipeline == nil)
+    assetWriter.startSession(atSourceTime: .zero)
 
-    pump(
-        writerInput: videoInput,
-        readerOutput: videoPipeline.readerOutput,
-        queueLabel: "jp.objective-audio.ambimux.video",
-        qos: .userInitiated,
-        finishedFlag: videoFinished
-    )
-    pump(
-        writerInput: ambisonicsAudioInput,
-        readerOutput: ambisonicsAudioPipeline.readerOutput,
-        queueLabel: "jp.objective-audio.ambimux.audio.ambisonics",
-        qos: .userInitiated,
-        finishedFlag: audioFinished,
-        mapSampleBuffer: ambisonicsMapSampleBuffer
-    )
-    if let fallbackAudioPipeline, let fallbackAudioInput {
-        pump(
-            writerInput: fallbackAudioInput,
-            readerOutput: fallbackAudioPipeline.readerOutput,
-            queueLabel: "jp.objective-audio.ambimux.audio.fallback",
-            qos: .userInitiated,
-            finishedFlag: fallbackFinished
-        )
-    }
-
-    // Wait for async processing using Task
-    try await Task {
-        // Wait until all processing is complete
-        while !(audioFinished.withLock { $0 })
-            || !(videoFinished.withLock { $0 })
-            || !(fallbackFinished.withLock { $0 })
-        {
-            try await Task.sleep(for: .milliseconds(10))
+    do {
+        try await withThrowingTaskGroup { group in
+            group.addTask {
+                try await transferTrackSamples(
+                    provider: videoProvider,
+                    receiver: videoReceiver,
+                    mapSampleBuffer: nil
+                )
+            }
+            group.addTask {
+                try await transferTrackSamples(
+                    provider: ambisonicsProvider,
+                    receiver: ambisonicsReceiver,
+                    mapSampleBuffer: ambisonicsMapSampleBuffer
+                )
+            }
+            if let fallbackProvider, let fallbackReceiver {
+                group.addTask {
+                    try await transferTrackSamples(
+                        provider: fallbackProvider,
+                        receiver: fallbackReceiver,
+                        mapSampleBuffer: nil
+                    )
+                }
+            }
+            for try await _ in group {}
         }
-    }.value
+    } catch {
+        videoPipeline.reader.cancelReading()
+        ambisonicsAudioPipeline.reader.cancelReading()
+        fallbackAudioPipeline?.reader.cancelReading()
+        assetWriter.cancelWriting()
+        throw error
+    }
 
     // Use async version of finishWriting
     await assetWriter.finishWriting()
