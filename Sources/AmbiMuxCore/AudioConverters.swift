@@ -315,16 +315,6 @@ func convertVideoWithAudioToMOV(
     let ambisonicsAudioInput = ambisonicsAudioPipeline.writerInput
     let fallbackAudioInput = fallbackAudioPipeline?.writerInput
 
-    if assetWriter.canAdd(videoInput) {
-        assetWriter.add(videoInput)
-    }
-    if assetWriter.canAdd(ambisonicsAudioInput) {
-        assetWriter.add(ambisonicsAudioInput)
-    }
-    if let fallbackAudioInput, assetWriter.canAdd(fallbackAudioInput) {
-        assetWriter.add(fallbackAudioInput)
-    }
-
     // Configure track metadata for proper fallback behavior
     // The ambisonics track is the primary track, fallback is the alternate
     ambisonicsAudioInput.languageCode = "und"
