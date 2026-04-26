@@ -17,12 +17,13 @@ private struct VideoTrackPipeline: Sendable {
 }
 
 private struct FallbackAudioTrackPipeline: Sendable {
+    let reader: AVAssetReader
     let readerOutput: AVAssetReaderTrackOutput
     let writerInput: AVAssetWriterInput
 }
 
 private func makeFallbackAudioPipelineIfPresent(
-    videoReader: AVAssetReader,
+    videoAsset: AVURLAsset,
     fallbackTrack audioTrack: AVAssetTrack
 ) async throws -> FallbackAudioTrackPipeline? {
     let formatDescriptions = try await audioTrack.load(.formatDescriptions)
@@ -30,8 +31,9 @@ private func makeFallbackAudioPipelineIfPresent(
         return nil
     }
 
+    let fallbackReader = try AVAssetReader(asset: videoAsset)
     let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-    videoReader.add(audioReaderOutput)
+    fallbackReader.add(audioReaderOutput)
 
     let audioWriterInput = AVAssetWriterInput(
         mediaType: .audio,
@@ -41,6 +43,7 @@ private func makeFallbackAudioPipelineIfPresent(
     audioWriterInput.expectsMediaDataInRealTime = false
 
     return FallbackAudioTrackPipeline(
+        reader: fallbackReader,
         readerOutput: audioReaderOutput,
         writerInput: audioWriterInput
     )
@@ -283,7 +286,7 @@ func convertVideoWithAudioToMOV(
     case .embeddedLpcm:
         if let fallbackTrack = embeddedScanResult?.fallback {
             fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
-                videoReader: videoPipeline.reader,
+                videoAsset: videoAsset,
                 fallbackTrack: fallbackTrack
             )
         } else {
@@ -292,7 +295,7 @@ func convertVideoWithAudioToMOV(
     case .apac, .lpcm:
         if let fallbackTrack = try await scanVideoFallbackTrack(videoAsset: videoAsset) {
             fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
-                videoReader: videoPipeline.reader,
+                videoAsset: videoAsset,
                 fallbackTrack: fallbackTrack
             )
         } else {
@@ -344,6 +347,7 @@ func convertVideoWithAudioToMOV(
     assetWriter.startSession(atSourceTime: .zero)
     videoPipeline.reader.startReading()
     ambisonicsAudioPipeline.reader.startReading()
+    fallbackAudioPipeline?.reader.startReading()
 
     let audioFinished = OSAllocatedUnfairLock(initialState: false)
     let videoFinished = OSAllocatedUnfairLock(initialState: false)
