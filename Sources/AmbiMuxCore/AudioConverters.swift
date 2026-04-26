@@ -341,7 +341,7 @@ func convertVideoWithAudioToMOV(
         for: ambisonicsAudioPipeline.readerOutput)
     let fallbackProvider: ReadySampleProvider?
     if let fallbackAudioPipeline {
-        fallbackProvider = videoPipeline.reader.outputProvider(for: fallbackAudioPipeline.readerOutput)
+        fallbackProvider = fallbackAudioPipeline.reader.outputProvider(for: fallbackAudioPipeline.readerOutput)
     } else {
         fallbackProvider = nil
     }
