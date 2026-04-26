@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreAudioTypes
 import CoreMedia
 import Foundation
@@ -66,7 +66,6 @@ private func makeFallbackAudioPipelineIfPresent(
 
     let fallbackReader = try AVAssetReader(asset: videoAsset)
     let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-    // `outputProvider(for:)` が reader に output を登録するため、ここでは `add` しない。
 
     let audioWriterInput = AVAssetWriterInput(
         mediaType: .audio,
@@ -100,7 +99,6 @@ private func makeAmbisonicsAudioPipeline(
     // デコードはトラックのネイティブ形式のまま（outputSettings: nil）。HOA は append 直前に CMSampleBuffer の実 formatDescription にだけ付与する。
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
     let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-    // `outputProvider(for:)` が reader に output を登録するため、ここでは `add` しない。
 
     // lpcm/embeddedLpcm: MOV 書き込み時に CMSampleBuffer を実 ASBD のまま HOA に差し替え。APAC 出力は HOA 付きでエンコード、LPCM 出力はデコード ASBD に合わせた HOA 付き LPCM、それ以外はパススルー。
     let audioInput: AVAssetWriterInput
@@ -158,7 +156,6 @@ private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrac
 
     let videoAssetReader = try AVAssetReader(asset: videoAsset)
     let videoReaderOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-    // `outputProvider(for:)` が reader に output を登録するため、ここでは `add` しない。
 
     let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil)
     videoInput.expectsMediaDataInRealTime = false
@@ -274,7 +271,7 @@ func convertVideoWithAudioToMOV(
         audioTrack: ambisonicsTrack,
         outputAudioFormat: effectiveOutputFormat
     )
-    let ambisonicsMapSampleBuffer: ((CMSampleBuffer) throws -> CMSampleBuffer)?
+    let ambisonicsMapSampleBuffer: (@Sendable (CMSampleBuffer) throws -> CMSampleBuffer)?
     switch audioMode {
     case .lpcm, .embeddedLpcm:
         let hoaMapper = HOAFDMapper()
@@ -364,35 +361,27 @@ func convertVideoWithAudioToMOV(
     ambisonicsAudioPipeline.reader.startReading()
     fallbackAudioPipeline?.reader.startReading()
 
-    let videoProviderRef = UncheckedSendableRef(videoProvider)
-    let videoReceiverRef = UncheckedSendableRef(videoReceiver)
-    let ambisonicsProviderRef = UncheckedSendableRef(ambisonicsProvider)
-    let ambisonicsReceiverRef = UncheckedSendableRef(ambisonicsReceiver)
-    let ambisonicsMapRef = UncheckedSendableRef(ambisonicsMapSampleBuffer)
-
     do {
-        try await withThrowingTaskGroup(of: Void.self) { group in
+        try await withThrowingTaskGroup { group in
             group.addTask {
                 try await transferTrackSamples(
-                    provider: videoProviderRef.value,
-                    receiver: videoReceiverRef.value,
+                    provider: videoProvider,
+                    receiver: videoReceiver,
                     mapSampleBuffer: nil
                 )
             }
             group.addTask {
                 try await transferTrackSamples(
-                    provider: ambisonicsProviderRef.value,
-                    receiver: ambisonicsReceiverRef.value,
-                    mapSampleBuffer: ambisonicsMapRef.value
+                    provider: ambisonicsProvider,
+                    receiver: ambisonicsReceiver,
+                    mapSampleBuffer: ambisonicsMapSampleBuffer
                 )
             }
             if let fallbackProvider, let fallbackReceiver {
-                let fallbackProviderRef = UncheckedSendableRef(fallbackProvider)
-                let fallbackReceiverRef = UncheckedSendableRef(fallbackReceiver)
                 group.addTask {
                     try await transferTrackSamples(
-                        provider: fallbackProviderRef.value,
-                        receiver: fallbackReceiverRef.value,
+                        provider: fallbackProvider,
+                        receiver: fallbackReceiver,
                         mapSampleBuffer: nil
                     )
                 }
@@ -402,6 +391,7 @@ func convertVideoWithAudioToMOV(
     } catch {
         videoPipeline.reader.cancelReading()
         ambisonicsAudioPipeline.reader.cancelReading()
+        fallbackAudioPipeline?.reader.cancelReading()
         assetWriter.cancelWriting()
         throw error
     }
