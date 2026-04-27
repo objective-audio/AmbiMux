@@ -362,7 +362,7 @@ func convertVideoWithAudioToMOV(
     assetWriter.startSession(atSourceTime: .zero)
     try videoPipeline.reader.start()
     try ambisonicsAudioPipeline.reader.start()
-    try fallbackAudioPipeline?.reader.start()
+//    try fallbackAudioPipeline?.reader.start()
 
     do {
         try await withThrowingTaskGroup { group in
@@ -379,7 +379,7 @@ func convertVideoWithAudioToMOV(
                     receiver: ambisonicsReceiver,
                     mapSampleBuffer: ambisonicsMapSampleBuffer
                 )
-            }
+            }/*
             if let fallbackProvider, let fallbackReceiver {
                 group.addTask {
                     try await transferTrackSamples(
@@ -388,7 +388,7 @@ func convertVideoWithAudioToMOV(
                         mapSampleBuffer: fallbackMapSampleBuffer
                     )
                 }
-            }
+            }*/
             for try await _ in group {}
         }
     } catch {
