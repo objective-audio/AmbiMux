@@ -173,7 +173,7 @@ private typealias ReadySampleProvider = AVAssetReaderOutput.Provider<
 
 nonisolated private func mapReadySampleBuffer(
     _ ready: CMReadySampleBuffer<CMSampleBuffer.DynamicContent>,
-    mapSampleBuffer: (CMSampleBuffer) throws -> CMSampleBuffer
+    mapSampleBuffer: @Sendable (CMSampleBuffer) throws -> CMSampleBuffer
 ) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
     try ready.withUnsafeSampleBuffer { sampleBuffer in
         // `mapSampleBuffer` はこのタスク専用。`CMReadySampleBuffer` が所有権を引き取るまでの一時的な橋渡し。
@@ -186,7 +186,7 @@ nonisolated private func mapReadySampleBuffer(
 nonisolated private func transferTrackSamples(
     provider: ReadySampleProvider,
     receiver: AVAssetWriterInput.SampleBufferReceiver,
-    mapSampleBuffer: ((CMSampleBuffer) throws -> CMSampleBuffer)?
+    mapSampleBuffer: (@Sendable (CMSampleBuffer) throws -> CMSampleBuffer)?
 ) async throws {
     do {
         while true {
@@ -280,6 +280,9 @@ func convertVideoWithAudioToMOV(
         }
     case .apac:
         ambisonicsMapSampleBuffer = nil
+    }
+    let fallbackMapSampleBuffer: @Sendable (CMSampleBuffer) throws -> CMSampleBuffer = { sampleBuffer in
+        return try CMSampleBuffer(copying: sampleBuffer)
     }
     // 映像ファイルの音声トラックをフォールバック用に抽出（存在する場合）
     // .embeddedLpcm: scanVideoAudioTracks で検出したモノ/ステレオをフォールバックに使用
@@ -382,7 +385,7 @@ func convertVideoWithAudioToMOV(
                     try await transferTrackSamples(
                         provider: fallbackProvider,
                         receiver: fallbackReceiver,
-                        mapSampleBuffer: nil
+                        mapSampleBuffer: fallbackMapSampleBuffer
                     )
                 }
             }
