@@ -342,15 +342,15 @@ func convertVideoWithAudioToMOV(
     let videoProvider = videoPipeline.reader.outputProvider(for: videoPipeline.readerOutput)
     let ambisonicsProvider = ambisonicsAudioPipeline.reader.outputProvider(
         for: ambisonicsAudioPipeline.readerOutput)
-    let fallbackProvider: ReadySampleProvider?
-    if let fallbackAudioPipeline {
-        fallbackProvider = fallbackAudioPipeline.reader.outputProvider(for: fallbackAudioPipeline.readerOutput)
-    } else {
-        fallbackProvider = nil
-    }
+//    let fallbackProvider: ReadySampleProvider?
+//    if let fallbackAudioPipeline {
+//        fallbackProvider = fallbackAudioPipeline.reader.outputProvider(for: fallbackAudioPipeline.readerOutput)
+//    } else {
+//        fallbackProvider = nil
+//    }
 
     let videoReceiver = assetWriter.inputReceiver(for: videoInput)
-    let ambisonicsReceiver = assetWriter.inputReceiver(for: ambisonicsAudioInput)
+//    let ambisonicsReceiver = assetWriter.inputReceiver(for: ambisonicsAudioInput)
 //    let fallbackReceiver: AVAssetWriterInput.SampleBufferReceiver?
 //    if let fallbackAudioInput {
 //        fallbackReceiver = assetWriter.inputReceiver(for: fallbackAudioInput)
@@ -372,14 +372,14 @@ func convertVideoWithAudioToMOV(
                     receiver: videoReceiver,
                     mapSampleBuffer: nil
                 )
-            }
+            }/*
             group.addTask {
                 try await transferTrackSamples(
                     provider: ambisonicsProvider,
                     receiver: ambisonicsReceiver,
                     mapSampleBuffer: ambisonicsMapSampleBuffer
                 )
-            }/*
+            }
             if let fallbackProvider, let fallbackReceiver {
                 group.addTask {
                     try await transferTrackSamples(
