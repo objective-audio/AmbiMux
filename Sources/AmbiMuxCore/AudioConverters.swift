@@ -341,11 +341,11 @@ func convertVideoWithAudioToMOV(
     }
 
     // Start reading and writing
-    assetWriter.startWriting()
+    try assetWriter.start()
     assetWriter.startSession(atSourceTime: .zero)
-    videoPipeline.reader.startReading()
-    ambisonicsAudioPipeline.reader.startReading()
-    fallbackAudioPipeline?.reader.startReading()
+    try videoPipeline.reader.start()
+    try ambisonicsAudioPipeline.reader.start()
+    try fallbackAudioPipeline?.reader.start()
 
     let audioFinished = OSAllocatedUnfairLock(initialState: false)
     let videoFinished = OSAllocatedUnfairLock(initialState: false)
