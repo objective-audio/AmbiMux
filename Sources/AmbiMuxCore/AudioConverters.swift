@@ -143,17 +143,15 @@ private func pump(
     queueLabel: String,
     qos: DispatchQoS,
     finishedFlag: OSAllocatedUnfairLock<Bool>,
-    mapSampleBuffer: ((_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil
+    mapSampleBuffer: (@Sendable (_ buffer: CMSampleBuffer) throws -> CMSampleBuffer)? = nil
 ) {
     let queue = DispatchQueue(label: queueLabel, qos: qos)
 
     let writerInputRef = UncheckedSendableRef(writerInput)
     let readerOutputRef = UncheckedSendableRef(readerOutput)
-    let mapRef = UncheckedSendableRef(mapSampleBuffer)
     writerInput.requestMediaDataWhenReady(on: queue) {
         let writerInput = writerInputRef.value
         let readerOutput = readerOutputRef.value
-        let mapSampleBuffer = mapRef.value
 
         while writerInput.isReadyForMoreMediaData && !(finishedFlag.withLock { $0 }) {
             if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
@@ -245,7 +243,7 @@ func convertVideoWithAudioToMOV(
         audioTrack: ambisonicsTrack,
         outputAudioFormat: effectiveOutputFormat
     )
-    let ambisonicsMapSampleBuffer: ((CMSampleBuffer) throws -> CMSampleBuffer)?
+    let ambisonicsMapSampleBuffer: (@Sendable (CMSampleBuffer) throws -> CMSampleBuffer)?
     switch audioMode {
     case .lpcm, .embeddedLpcm:
         let hoaFDState = OSAllocatedUnfairLock<
