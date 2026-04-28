@@ -351,12 +351,12 @@ func convertVideoWithAudioToMOV(
 
     let videoReceiver = assetWriter.inputReceiver(for: videoInput)
     let ambisonicsReceiver = assetWriter.inputReceiver(for: ambisonicsAudioInput)
-    let fallbackReceiver: AVAssetWriterInput.SampleBufferReceiver?
-    if let fallbackAudioInput {
-        fallbackReceiver = assetWriter.inputReceiver(for: fallbackAudioInput)
-    } else {
-        fallbackReceiver = nil
-    }
+//    let fallbackReceiver: AVAssetWriterInput.SampleBufferReceiver?
+//    if let fallbackAudioInput {
+//        fallbackReceiver = assetWriter.inputReceiver(for: fallbackAudioInput)
+//    } else {
+//        fallbackReceiver = nil
+//    }
 
     try assetWriter.start()
     assetWriter.startSession(atSourceTime: .zero)
