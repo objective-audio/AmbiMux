@@ -3,19 +3,19 @@ import CoreAudioTypes
 import CoreMedia
 import Foundation
 
-private struct AudioTrackPipeline: Sendable {
+nonisolated private struct AudioTrackPipeline: @unchecked Sendable {
     let reader: AVAssetReader
     let readerOutput: AVAssetReaderTrackOutput
     let writerInput: AVAssetWriterInput
 }
 
-private struct VideoTrackPipeline: Sendable {
+nonisolated private struct VideoTrackPipeline: @unchecked Sendable {
     let reader: AVAssetReader
     let readerOutput: AVAssetReaderTrackOutput
     let writerInput: AVAssetWriterInput
 }
 
-private struct FallbackAudioTrackPipeline: Sendable {
+nonisolated private struct FallbackAudioTrackPipeline: @unchecked Sendable {
     let reader: AVAssetReader
     let readerOutput: AVAssetReaderTrackOutput
     let writerInput: AVAssetWriterInput
@@ -55,7 +55,7 @@ private final class HOAFDMapper: @unchecked Sendable {
     }
 }
 
-private func makeFallbackAudioPipelineIfPresent(
+nonisolated private func makeFallbackAudioPipelineIfPresent(
     videoAsset: AVURLAsset,
     fallbackTrack audioTrack: AVAssetTrack
 ) async throws -> FallbackAudioTrackPipeline? {
@@ -80,7 +80,7 @@ private func makeFallbackAudioPipelineIfPresent(
     )
 }
 
-private func makeAmbisonicsAudioPipeline(
+nonisolated private func makeAmbisonicsAudioPipeline(
     audioAsset: AVURLAsset,
     audioTrack: AVAssetTrack,
     outputAudioFormat: AudioOutputFormat
@@ -146,7 +146,7 @@ private func makeAmbisonicsAudioPipeline(
     )
 }
 
-private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrackPipeline {
+nonisolated private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrackPipeline {
     let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
     guard let videoTrack = videoTracks.first else {
         throw AmbiMuxError.videoTrackNotFound
