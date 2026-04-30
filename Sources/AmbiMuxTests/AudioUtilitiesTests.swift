@@ -15,7 +15,8 @@ struct AudioUtilitiesTests {
         var asbd = AudioStreamBasicDescription(
             mSampleRate: 48000,
             mFormatID: kAudioFormatLinearPCM,
-            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagsNativeEndian,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked
+                | kAudioFormatFlagsNativeEndian,
             mBytesPerPacket: 16,
             mFramesPerPacket: 1,
             mBytesPerFrame: 16,
@@ -212,7 +213,8 @@ struct AudioUtilitiesTests {
         var layoutSize: Int = 0
         let layoutPtr = CMAudioFormatDescriptionGetChannelLayout(copied, sizeOut: &layoutSize)
         let layoutTag = try #require(layoutPtr?.pointee.mChannelLayoutTag)
-        #expect(layoutTag & kAudioChannelLayoutTag_HOA_ACN_SN3D == kAudioChannelLayoutTag_HOA_ACN_SN3D)
+        #expect(
+            layoutTag & kAudioChannelLayoutTag_HOA_ACN_SN3D == kAudioChannelLayoutTag_HOA_ACN_SN3D)
     }
 
     @Test func testHasNonAPACWithHOALayoutTagLpcmWithHOA() throws {

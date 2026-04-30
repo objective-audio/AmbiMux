@@ -113,7 +113,8 @@ struct RunAmbiMuxTests {
 
         let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
         let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
-        #expect(audioTracks.count == 2, "Ambisonics + stereo fallback → 2 audio tracks")
+        #expect(
+            audioTracks.count == 1, "Ambisonics only (2ch preceding track in source is ignored)")
 
         let primaryFormat = try await audioTracks[0].load(.formatDescriptions)
         guard let fd = primaryFormat.first,
@@ -123,61 +124,6 @@ struct RunAmbiMuxTests {
             return
         }
         #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Primary track should be 4ch")
-    }
-
-    @Test func testRunAmbiMuxSuccessWithEmbeddedLpcmAndFallback() async throws {
-        let cachePath = try TestResourceHelper.createTestDirectory()
-        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
-
-        // test_4ch（正しい Discrete 0–3）+ test_2ch のステレオをマルチプレックスしたアセット
-        let videoPath = try TestResourceHelper.resourcePath(
-            for: "test_4ch_2ch", withExtension: "mov")
-
-        let outputPath = URL(fileURLWithPath: cachePath)
-            .appendingPathComponent("runAmbi_embedded_fallback_output.mov").path
-
-        try await runAmbiMux(
-            audioPath: nil,
-            videoPath: videoPath,
-            outputPath: outputPath
-        )
-
-        let outputExists = FileManager.default.fileExists(atPath: outputPath)
-        #expect(outputExists, "Output file should be created at \(outputPath)")
-
-        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
-        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
-
-        // embeddedLpcm で Ambisonics + ステレオの両方を含む映像 → 2トラック出力
-        #expect(
-            audioTracks.count == 2,
-            "Output should have 2 audio tracks (ambisonics + fallback stereo)")
-
-        let track1 = audioTracks[0]
-        let formatDesc1 = try await track1.load(.formatDescriptions)
-        guard let formatDescription1 = formatDesc1.first,
-            let asbdPtr1 = formatDescription1.audioStreamBasicDescription
-        else {
-            Issue.record("Could not get format description for track 1")
-            return
-        }
-        let channelCount1 = Int(asbdPtr1.mChannelsPerFrame)
-        #expect(
-            channelCount1 == 4,
-            "Track 1 should be ambisonics with 4 channels, got \(channelCount1)")
-
-        let track2 = audioTracks[1]
-        let formatDesc2 = try await track2.load(.formatDescriptions)
-        guard let formatDescription2 = formatDesc2.first,
-            let asbdPtr2 = formatDescription2.audioStreamBasicDescription
-        else {
-            Issue.record("Could not get format description for track 2")
-            return
-        }
-        let channelCount2 = Int(asbdPtr2.mChannelsPerFrame)
-        #expect(
-            channelCount2 == 2,
-            "Track 2 should be stereo fallback with 2 channels, got \(channelCount2)")
     }
 
     @Test func testRunAmbiMuxFailsWhenNoAmbisonicsTrackInVideo() async throws {
@@ -244,67 +190,5 @@ struct RunAmbiMuxTests {
                 outputPath: secondOutputPath
             )
         }
-    }
-
-    @Test func testRunAmbiMuxSuccessWithVideoAudioFallback() async throws {
-        // Create test directory
-        let cachePath = try TestResourceHelper.createTestDirectory()
-        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
-
-        let ambisonicsAudioPath = try TestResourceHelper.resourcePath(
-            for: "test_48k_4ch", withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
-
-        let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
-            "runAmbi_fallback_output.mov"
-        ).path
-
-        try await runAmbiMux(
-            audioPath: ambisonicsAudioPath,
-            videoPath: videoPath,
-            outputPath: outputPath
-        )
-
-        // Verify output file was created
-        let outputExists = FileManager.default.fileExists(atPath: outputPath)
-        #expect(outputExists, "Output file should be created")
-
-        // Check if output has audio tracks
-        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
-        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
-
-        // Should have 2 tracks: ambisonics (4ch) and fallback stereo (2ch) from video
-        #expect(
-            audioTracks.count == 2,
-            "Output should have 2 audio tracks (ambisonics + fallback stereo)")
-
-        // Verify track order and contents
-        // Track 1 (index 0) should be ambisonics (4ch)
-        let track1 = audioTracks[0]
-        let formatDesc1 = try await track1.load(.formatDescriptions)
-        guard let formatDescription1 = formatDesc1.first,
-            let asbdPtr1 = formatDescription1.audioStreamBasicDescription
-        else {
-            Issue.record("Could not get format description for track 1")
-            return
-        }
-        let channelCount1 = Int(asbdPtr1.mChannelsPerFrame)
-        #expect(
-            channelCount1 == 4, "Track 1 should be ambisonics with 4 channels, got \(channelCount1)"
-        )
-
-        // Track 2 (index 1) should be stereo fallback (2ch)
-        let track2 = audioTracks[1]
-        let formatDesc2 = try await track2.load(.formatDescriptions)
-        guard let formatDescription2 = formatDesc2.first,
-            let asbdPtr2 = formatDescription2.audioStreamBasicDescription
-        else {
-            Issue.record("Could not get format description for track 2")
-            return
-        }
-        let channelCount2 = Int(asbdPtr2.mChannelsPerFrame)
-        #expect(
-            channelCount2 == 2,
-            "Track 2 should be stereo fallback with 2 channels, got \(channelCount2)")
     }
 }

@@ -68,6 +68,94 @@ struct AudioConvertersTests {
         try TestResourceHelper.removeTestDirectory(at: cachePath)
     }
 
+    @Test func testAmbiMuxConversionWithNoEmbeddedAudioVideoAnd4chWAV() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: "test_no_audio", withExtension: "mov")
+        let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
+            "test_no_audio_with_4ch_output.mov"
+        ).path
+
+        try await convertVideoWithAudioToMOV(
+            audioPath: audioPath,
+            audioMode: .lpcm,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
+
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Output file should be created at \(outputPath)")
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
+        #expect(audioTracks.count == 1, "Output should contain exactly one audio track")
+        let audioTrack = try #require(audioTracks.first, "Output file has no audio track")
+
+        let formatDescriptions = try await audioTrack.load(.formatDescriptions)
+        let audioFormat = try #require(
+            formatDescriptions.first, "Could not retrieve audio format information")
+        let audioStreamBasicDescriptionPtr = try #require(
+            CMAudioFormatDescriptionGetStreamBasicDescription(audioFormat),
+            "Could not retrieve audio stream information")
+        let channelCount = Int(audioStreamBasicDescriptionPtr.pointee.mChannelsPerFrame)
+
+        #expect(
+            channelCount == 4,
+            "Output audio should have 4 channels (actual=\(channelCount))"
+        )
+    }
+
+    @Test func testAmbiMuxConversionWithEmbeddedLpcmOnly() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_4ch", withExtension: "mov")
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("test_embedded_lpcm_output.mov").path
+
+        try await convertVideoWithAudioToMOV(
+            audioPath: videoPath,
+            audioMode: .embeddedLpcm,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
+
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Output file should be created at \(outputPath)")
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
+        #expect(audioTracks.count == 1, "Embedded LPCM only → exactly 1 audio track")
+
+        let audioTrack = try #require(audioTracks.first, "Output file has no audio track")
+        let formatDescriptions = try await audioTrack.load(.formatDescriptions)
+        let audioFormat = try #require(
+            formatDescriptions.first, "Could not retrieve audio format information")
+        let audioStreamBasicDescriptionPtr = try #require(
+            CMAudioFormatDescriptionGetStreamBasicDescription(audioFormat),
+            "Could not retrieve audio stream information")
+        #expect(
+            Int(audioStreamBasicDescriptionPtr.pointee.mChannelsPerFrame) == 4,
+            "Output audio should have 4 channels"
+        )
+
+        var layoutSize: Int = 0
+        let channelLayoutPtr = CMAudioFormatDescriptionGetChannelLayout(
+            audioFormat, sizeOut: &layoutSize)
+        let layoutTag = try #require(
+            channelLayoutPtr?.pointee.mChannelLayoutTag,
+            "LPCM output should include channel layout"
+        )
+        #expect(
+            layoutTag & kAudioChannelLayoutTag_HOA_ACN_SN3D == kAudioChannelLayoutTag_HOA_ACN_SN3D,
+            "Ambisonics LPCM track should be tagged HOA ACN SN3D"
+        )
+    }
+
     @Test func testAmbiMuxConversionWithAPAC() async throws {
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()
@@ -189,7 +277,8 @@ struct AudioConvertersTests {
         expectedOutputRate: Double
     ) async throws {
         let audioPath = try TestResourceHelper.resourcePath(for: fileName, withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: "test_no_audio", withExtension: "mov")
 
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()

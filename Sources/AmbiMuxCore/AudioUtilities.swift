@@ -28,7 +28,8 @@ nonisolated func copyAudioFormatDescriptionWithHOALayout(
     var asbd = asbdPtr.pointee
     let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
     var magicCookieSize: Int = 0
-    let magicCookiePtr = CMAudioFormatDescriptionGetMagicCookie(formatDescription, sizeOut: &magicCookieSize)
+    let magicCookiePtr = CMAudioFormatDescriptionGetMagicCookie(
+        formatDescription, sizeOut: &magicCookieSize)
     var newFormat: CMFormatDescription?
     let err: OSStatus = layoutData.withUnsafeBytes { rawBuf in
         guard let base = rawBuf.baseAddress else { return -1 }

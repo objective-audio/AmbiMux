@@ -10,7 +10,8 @@ struct MuxCommand: AsyncParsableCommand {
 
     @Option(
         name: [.customShort("a"), .customLong("audio")],
-        help: "Spatial audio file path (APAC or LPCM, auto-detected). Omit to use embedded audio from the video file."
+        help:
+            "Spatial audio file path (APAC or LPCM, auto-detected). Omit to use embedded audio from the video file."
     )
     var audioFilePath: String?
 

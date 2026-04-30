@@ -1,16 +1,16 @@
 ---
 name: mux
-description: Batch convert all .mov videos in workspace/mux-input/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise uses embedded Ambisonics (4/9/16ch). Primary spatial audio is output as APAC; if the same MOV also embeds mono/stereo, that track is passed through as a second audio track (fallback). Outputs to workspace/output/. Prefer .cursor/skills/mux/scripts/batch-mux.sh with required_permissions ["all"]. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing MOV files.
+description: Batch convert all .mov videos in workspace/mux-input/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise uses embedded Ambisonics (4/9/16ch). Primary spatial audio is output as APAC (single audio track). Outputs to workspace/output/. Prefer .cursor/skills/mux/scripts/batch-mux.sh with required_permissions ["all"]. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing MOV files.
 ---
 
-# AmbiMux: workspace/ の MOV を一括変換（外部オーディオ優先・埋め込みフォールバック）
+# AmbiMux: workspace/ の MOV を一括変換（外部オーディオ優先・埋め込み Ambisonics）
 
 ## 目的
 
 `workspace/mux-input/` 内の **全 `.mov`** に対し、以下の優先順で変換する:
 
 1. **外部オーディオが見つかった場合** — ファイル名が前方一致するオーディオファイル（`.mp4` / `.wav` / `.aiff`）を使って音声差し替え
-2. **外部オーディオが見つからない場合** — `.mov` 内の **Ambisonics（4/9/16ch）** を主トラックとして **APAC** で出力。同一ファイル内に **モノ/ステレオ（1/2ch）** の音声もあれば、**第2トラックとしてそのまま（パススルー）** 出力に含める
+2. **外部オーディオが見つからない場合** — `.mov` 内の **Ambisonics（4/9/16ch）** を **APAC** で出力（音声トラックは常に1本）
 3. **どちらも使えない場合** — スキップ（警告表示）
 
 ## 前提条件
@@ -32,10 +32,10 @@ description: Batch convert all .mov videos in workspace/mux-input/. For each MOV
 | 項目 | 内容 |
 |------|------|
 | 外部音声の優先 | `.mp4` → `.wav` → `.aiff`。`<movのベース名>` で始まるファイルを入力ディレクトリ直下から1件選ぶ（例: `video_abc.mov` → `video_abc*.mp4` など） |
-| 埋め込みフォールバック | 外部が無いとき、音声ストリームのうち **4 / 9 / 16ch が1本でもあれば** 埋め込みで変換対象。それ以外はスキップ |
+| 埋め込み Ambisonics | 外部が無いとき、音声ストリームのうち **4 / 9 / 16ch が1本でもあれば** 埋め込みで変換対象。それ以外はスキップ |
 | 出力パス | `<ベース名>_ambimux.mov`（既存と重なる場合は `_1` 等でユニーク化。**ambimux** 側の挙動） |
 | 主トラック | 常に **`--audio-output apac`**。入力が APAC ならコピー、LPCM なら APAC エンコード |
-| 外部音声利用時 | 映像側に 1/2ch の埋め込みがあれば **第2トラックとしてパススルー**（フォールバック） |
+| 外部音声利用時 | 映像の埋め込み音声は使用せず、外部ファイルの空間音声のみを mux（出力は音声1トラック） |
 
 ## フォルダ構造
 

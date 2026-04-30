@@ -21,8 +21,8 @@ public nonisolated enum VideoValidationResult: Equatable, Sendable {
     case ineligible(VideoValidationFailure)
 }
 
-public extension VideoValidationSuccess {
-    nonisolated var message: String {
+extension VideoValidationSuccess {
+    public nonisolated var message: String {
         switch self {
         case .noEmbeddedAudioUseExternal:
             return
@@ -35,8 +35,8 @@ public extension VideoValidationSuccess {
     }
 }
 
-public extension VideoValidationFailure {
-    nonisolated var message: String {
+extension VideoValidationFailure {
+    public nonisolated var message: String {
         switch self {
         case .noVideoTracks:
             return "No video tracks found"
@@ -69,8 +69,8 @@ public nonisolated enum AudioValidationResult: Equatable, Sendable {
     case ineligible(AudioValidationFailure)
 }
 
-public extension AudioValidationSuccess {
-    nonisolated var message: String {
+extension AudioValidationSuccess {
+    public nonisolated var message: String {
         switch self {
         case .apac:
             return "APAC audio is present"
@@ -80,8 +80,8 @@ public extension AudioValidationSuccess {
     }
 }
 
-public extension AudioValidationFailure {
-    nonisolated var message: String {
+extension AudioValidationFailure {
+    public nonisolated var message: String {
         switch self {
         case .noAudioTracks:
             return "No audio tracks found"
@@ -136,10 +136,14 @@ nonisolated public func runAmbiMux(
     try await verifyOutputFileDetails(outputPath: finalOutputPath)
 }
 
-nonisolated public func validateVideoInputEligibility(videoPath: String) async throws -> VideoValidationResult {
+nonisolated public func validateVideoInputEligibility(videoPath: String) async throws
+    -> VideoValidationResult
+{
     try await evaluateVideoInputEligibility(videoPath: videoPath)
 }
 
-nonisolated public func validateAudioInputEligibility(audioPath: String) async throws -> AudioValidationResult {
+nonisolated public func validateAudioInputEligibility(audioPath: String) async throws
+    -> AudioValidationResult
+{
     try await evaluateAudioInputEligibility(audioPath: audioPath)
 }
