@@ -74,7 +74,8 @@ struct AudioConvertersTests {
 
         let audioPath = try TestResourceHelper.resourcePath(
             for: "test_48k_4ch", withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_no_audio", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: "test_no_audio", withExtension: "mov")
         let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
             "test_no_audio_with_4ch_output.mov"
         ).path
@@ -276,7 +277,8 @@ struct AudioConvertersTests {
         expectedOutputRate: Double
     ) async throws {
         let audioPath = try TestResourceHelper.resourcePath(for: fileName, withExtension: "wav")
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_no_audio", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: "test_no_audio", withExtension: "mov")
 
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()

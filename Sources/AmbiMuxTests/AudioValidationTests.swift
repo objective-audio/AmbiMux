@@ -47,7 +47,8 @@ struct AudioValidationTests {
     }
 
     @Test func testValidateAudioInputEligibilityAmbisonics() async throws {
-        let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_4ch", withExtension: "wav")
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
         let result = try await validateAudioInputEligibility(audioPath: audioPath)
 
         if case .eligible(.ambisonics(let order)) = result {
@@ -58,7 +59,8 @@ struct AudioValidationTests {
     }
 
     @Test func testValidateAudioInputEligibilityUnsupported() async throws {
-        let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_2ch", withExtension: "wav")
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_2ch", withExtension: "wav")
         let result = try await validateAudioInputEligibility(audioPath: audioPath)
 
         if case .ineligible(.missingAPACAndAmbisonics) = result {
@@ -80,7 +82,8 @@ struct AudioValidationTests {
     }
 
     @Test func testValidateVideoInputEligibilityNoEmbeddedAudio() async throws {
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_no_audio", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: "test_no_audio", withExtension: "mov")
         let result = try await validateVideoInputEligibility(videoPath: videoPath)
 
         if case .eligible(.noEmbeddedAudioUseExternal) = result {
@@ -91,7 +94,8 @@ struct AudioValidationTests {
     }
 
     @Test func testValidateVideoInputEligibilityNoVideoTracks() async throws {
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_48k_2ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_2ch", withExtension: "wav")
         let result = try await validateVideoInputEligibility(videoPath: videoPath)
 
         if case .ineligible(.noVideoTracks) = result {
@@ -116,8 +120,10 @@ struct AudioValidationTests {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
-        let audioPath = try TestResourceHelper.resourcePath(for: "test_48k_4ch", withExtension: "wav")
-        let sourceVideoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let sourceVideoPath = try TestResourceHelper.resourcePath(
+            for: "test_2ch", withExtension: "mov")
         let apacVideoPath = URL(fileURLWithPath: cachePath)
             .appendingPathComponent("video_with_apac.mov").path
 

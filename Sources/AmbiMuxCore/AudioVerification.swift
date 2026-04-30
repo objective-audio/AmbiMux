@@ -30,12 +30,9 @@ nonisolated func detectAudioInputMode(audioPath: String) async throws -> AudioIn
     return .lpcm
 }
 
-/// 映像の音声トラックを走査し、Ambisonics（4/9/16ch）とモノ/ステレオ（全トラック）を検出する
-/// - Returns: (ambisonicsTrack, fallbackTrack) フォールバックは存在しない場合 nil
-/// - Throws: noAmbisonicsTrackFound  Ambisonics トラックが1つもない場合
-nonisolated func scanVideoAudioTracks(videoAsset: AVURLAsset) async throws -> (
-    ambisonics: AVAssetTrack, fallback: AVAssetTrack?
-) {
+/// 映像の音声トラックを走査し、最初の Ambisonics（4/9/16ch）トラックを返す
+/// - Throws: `noAudioTracksFound` / `noAmbisonicsTrackFound`
+nonisolated func scanVideoAmbisonicsTrack(videoAsset: AVURLAsset) async throws -> AVAssetTrack {
     let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
 
     guard !audioTracks.isEmpty else {
@@ -43,7 +40,6 @@ nonisolated func scanVideoAudioTracks(videoAsset: AVURLAsset) async throws -> (
     }
 
     var ambisonicsTrack: AVAssetTrack?
-    var fallbackTrack: AVAssetTrack?
 
     for track in audioTracks {
         let formatDescriptions = try await track.load(.formatDescriptions)
@@ -59,10 +55,6 @@ nonisolated func scanVideoAudioTracks(videoAsset: AVURLAsset) async throws -> (
             if ambisonicsTrack == nil {
                 ambisonicsTrack = track
             }
-        } else if channels == 1 || channels == 2 {
-            if fallbackTrack == nil {
-                fallbackTrack = track
-            }
         }
     }
 
@@ -70,29 +62,7 @@ nonisolated func scanVideoAudioTracks(videoAsset: AVURLAsset) async throws -> (
         throw AmbiMuxError.noAmbisonicsTrackFound
     }
 
-    return (ambisonics, fallbackTrack)
-}
-
-/// 映像の音声トラックを走査し、モノ/ステレオのトラックを検出する（apac/lpcm 用フォールバック）
-/// - Returns: 最初に見つかった 1ch/2ch トラック、なければ nil
-nonisolated func scanVideoFallbackTrack(videoAsset: AVURLAsset) async throws -> AVAssetTrack? {
-    let audioTracks = try await videoAsset.loadTracks(withMediaType: .audio)
-
-    for track in audioTracks {
-        let formatDescriptions = try await track.load(.formatDescriptions)
-        guard let formatDescription = formatDescriptions.first,
-            let asbd = formatDescription.audioStreamBasicDescription
-        else {
-            continue
-        }
-
-        let channels = Int(asbd.mChannelsPerFrame)
-        if channels == 1 || channels == 2 {
-            return track
-        }
-    }
-
-    return nil
+    return ambisonics
 }
 
 nonisolated private func isTrackAPAC(_ track: AVAssetTrack) async throws -> Bool {
@@ -112,8 +82,9 @@ nonisolated func hasNonAPACWithHOALayoutTag(
 ) -> Bool {
     guard formatID != kAudioFormatAPAC else { return false }
     var layoutSize: Int = 0
-    guard let channelLayout = CMAudioFormatDescriptionGetChannelLayout(
-        formatDescription, sizeOut: &layoutSize)
+    guard
+        let channelLayout = CMAudioFormatDescriptionGetChannelLayout(
+            formatDescription, sizeOut: &layoutSize)
     else {
         return false
     }
@@ -125,13 +96,15 @@ nonisolated func hasNonAPACWithHOALayoutTag(
 /// and the primary Ambisonics track must not already be APAC (no re-encode needed).
 nonisolated func validateEmbeddedLpcmAudio(videoPath: String) async throws {
     let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
-    let scanResult = try await scanVideoAudioTracks(videoAsset: videoAsset)
-    if try await isTrackAPAC(scanResult.ambisonics) {
+    let ambisonics = try await scanVideoAmbisonicsTrack(videoAsset: videoAsset)
+    if try await isTrackAPAC(ambisonics) {
         throw AmbiMuxError.embeddedAmbisonicsAlreadyAPAC
     }
 }
 
-nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -> VideoValidationResult {
+nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws
+    -> VideoValidationResult
+{
     let videoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
     let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
     guard !videoTracks.isEmpty else {
@@ -180,7 +153,9 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
     return .eligible(.nonSpatialEmbeddedAudio)
 }
 
-nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws -> AudioValidationResult {
+nonisolated func evaluateAudioInputEligibility(audioPath: String) async throws
+    -> AudioValidationResult
+{
     let audioAsset = AVURLAsset(url: URL(fileURLWithPath: audioPath))
     let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
 

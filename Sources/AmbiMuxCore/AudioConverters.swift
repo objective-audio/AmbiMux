@@ -15,12 +15,6 @@ nonisolated private struct VideoTrackPipeline: @unchecked Sendable {
     let writerInput: AVAssetWriterInput
 }
 
-nonisolated private struct FallbackAudioTrackPipeline: @unchecked Sendable {
-    let reader: AVAssetReader
-    let readerOutput: AVAssetReaderTrackOutput
-    let writerInput: AVAssetWriterInput
-}
-
 /// HOA 付け替えの状態。アンビソニクス転送タスク単体からのみ参照する。
 private final class HOAFDMapper: @unchecked Sendable {
     /// アンビソニクス転送タスク1本のみが参照する（`transferTrackSamples` 内）。
@@ -47,37 +41,13 @@ private final class HOAFDMapper: @unchecked Sendable {
             guard AmbisonicsOrder(channelCount: channelCount) != nil else {
                 throw AmbiMuxError.invalidChannelCount(count: channelCount)
             }
-            let newFD = try copyAudioFormatDescriptionWithHOALayout(from: fd, channelCount: channelCount)
+            let newFD = try copyAudioFormatDescriptionWithHOALayout(
+                from: fd, channelCount: channelCount)
             state = (referenceASBD: asbd, hoaFormatDescription: newFD)
             hoaFD = newFD
         }
         return try sampleBufferReplacingFormatDescription(buf, newFormat: hoaFD)
     }
-}
-
-nonisolated private func makeFallbackAudioPipelineIfPresent(
-    videoAsset: AVURLAsset,
-    fallbackTrack audioTrack: AVAssetTrack
-) async throws -> FallbackAudioTrackPipeline? {
-    let formatDescriptions = try await audioTrack.load(.formatDescriptions)
-    guard let formatDescription = formatDescriptions.first else {
-        return nil
-    }
-
-    let fallbackReader = try AVAssetReader(asset: videoAsset)
-    let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-
-    let audioWriterInput = AVAssetWriterInput(
-        mediaType: .audio,
-        outputSettings: nil,  // パススルー
-        sourceFormatHint: formatDescription
-    )
-
-    return FallbackAudioTrackPipeline(
-        reader: fallbackReader,
-        readerOutput: audioReaderOutput,
-        writerInput: audioWriterInput
-    )
 }
 
 nonisolated private func makeAmbisonicsAudioPipeline(
@@ -146,7 +116,9 @@ nonisolated private func makeAmbisonicsAudioPipeline(
     )
 }
 
-nonisolated private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrackPipeline {
+nonisolated private func makeVideoPipeline(videoAsset: AVURLAsset) async throws
+    -> VideoTrackPipeline
+{
     let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
     guard let videoTrack = videoTracks.first else {
         throw AmbiMuxError.videoTrackNotFound
@@ -233,11 +205,9 @@ func convertVideoWithAudioToMOV(
     // apac: パススルー
     let audioAsset: AVURLAsset
     let ambisonicsTrack: AVAssetTrack
-    let embeddedScanResult: (ambisonics: AVAssetTrack, fallback: AVAssetTrack?)?
 
     switch audioMode {
     case .lpcm:
-        embeddedScanResult = nil
         let sourceAsset = AVURLAsset(url: audioURL)
         let audioTracks = try await sourceAsset.loadTracks(withMediaType: .audio)
         guard let track = audioTracks.first else {
@@ -246,12 +216,10 @@ func convertVideoWithAudioToMOV(
         audioAsset = sourceAsset
         ambisonicsTrack = track
     case .embeddedLpcm:
-        let scanResult = try await scanVideoAudioTracks(videoAsset: videoAsset)
-        embeddedScanResult = (scanResult.ambisonics, scanResult.fallback)
+        let track = try await scanVideoAmbisonicsTrack(videoAsset: videoAsset)
         audioAsset = videoAsset
-        ambisonicsTrack = scanResult.ambisonics
+        ambisonicsTrack = track
     case .apac:
-        embeddedScanResult = nil
         let externalAsset = AVURLAsset(url: audioURL)
         let audioTracks = try await externalAsset.loadTracks(withMediaType: .audio)
         guard let track = audioTracks.first else {
@@ -278,85 +246,24 @@ func convertVideoWithAudioToMOV(
     case .apac:
         ambisonicsMapSampleBuffer = nil
     }
-    // 映像ファイルの音声トラックをフォールバック用に抽出（存在する場合）
-    // .embeddedLpcm: scanVideoAudioTracks で検出したモノ/ステレオをフォールバックに使用
-    // .apac/.lpcm: scanVideoFallbackTrack で検出したモノ/ステレオをフォールバックに使用
-    let fallbackAudioPipeline: FallbackAudioTrackPipeline?
-    switch audioMode {
-    case .embeddedLpcm:
-        if let fallbackTrack = embeddedScanResult?.fallback {
-            fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
-                videoAsset: videoAsset,
-                fallbackTrack: fallbackTrack
-            )
-        } else {
-            fallbackAudioPipeline = nil
-        }
-    case .apac, .lpcm:
-        if let fallbackTrack = try await scanVideoFallbackTrack(videoAsset: videoAsset) {
-            fallbackAudioPipeline = try await makeFallbackAudioPipelineIfPresent(
-                videoAsset: videoAsset,
-                fallbackTrack: fallbackTrack
-            )
-        } else {
-            fallbackAudioPipeline = nil
-        }
-    }
 
     // Create AVAssetWriter
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
     let videoInput = videoPipeline.writerInput
     let ambisonicsAudioInput = ambisonicsAudioPipeline.writerInput
-    let fallbackAudioInput = fallbackAudioPipeline?.writerInput
-
-    // Configure track metadata for proper fallback behavior
-    // The ambisonics track is the primary track, fallback is the alternate
-    ambisonicsAudioInput.languageCode = "und"
-    ambisonicsAudioInput.extendedLanguageTag = "und"
-    ambisonicsAudioInput.marksOutputTrackAsEnabled = true  // Primary track is enabled
-
-    if let fallbackAudioInput {
-        fallbackAudioInput.languageCode = "und"
-        fallbackAudioInput.extendedLanguageTag = "und"
-        // Mark output tracks as enabled true and then false for fallback audio input
-        fallbackAudioInput.marksOutputTrackAsEnabled = true
-        fallbackAudioInput.marksOutputTrackAsEnabled = false  // Fallback is disabled by default
-
-        // Add track association: ambisonics track has fallback as its alternate
-        let associationType = AVAssetTrack.AssociationType.audioFallback.rawValue
-        if fallbackAudioInput.canAddTrackAssociation(
-            withTrackOf: ambisonicsAudioInput, type: associationType)
-        {
-            fallbackAudioInput.addTrackAssociation(
-                withTrackOf: ambisonicsAudioInput, type: associationType)
-        }
-    }
 
     // `outputProvider` は読み取り開始前、`inputReceiver` は書き込み開始前に取得する（内部で入出力の登録・設定を行う）。
     let videoProvider = videoPipeline.reader.outputProvider(for: videoPipeline.readerOutput)
     let ambisonicsProvider = ambisonicsAudioPipeline.reader.outputProvider(
         for: ambisonicsAudioPipeline.readerOutput)
-    let fallbackProvider: ReadySampleProvider?
-    if let fallbackAudioPipeline {
-        fallbackProvider = fallbackAudioPipeline.reader.outputProvider(for: fallbackAudioPipeline.readerOutput)
-    } else {
-        fallbackProvider = nil
-    }
 
     let videoReceiver = assetWriter.inputReceiver(for: videoInput)
     let ambisonicsReceiver = assetWriter.inputReceiver(for: ambisonicsAudioInput)
-    let fallbackReceiver: AVAssetWriterInput.SampleBufferReceiver?
-    if let fallbackAudioInput {
-        fallbackReceiver = assetWriter.inputReceiver(for: fallbackAudioInput)
-    } else {
-        fallbackReceiver = nil
-    }
 
     try assetWriter.start()
 
     try videoPipeline.reader.start()
     try ambisonicsAudioPipeline.reader.start()
-    try fallbackAudioPipeline?.reader.start()
 
     assetWriter.startSession(atSourceTime: .zero)
 
@@ -376,21 +283,11 @@ func convertVideoWithAudioToMOV(
                     mapSampleBuffer: ambisonicsMapSampleBuffer
                 )
             }
-            if let fallbackProvider, let fallbackReceiver {
-                group.addTask {
-                    try await transferTrackSamples(
-                        provider: fallbackProvider,
-                        receiver: fallbackReceiver,
-                        mapSampleBuffer: nil
-                    )
-                }
-            }
             for try await _ in group {}
         }
     } catch {
         videoPipeline.reader.cancelReading()
         ambisonicsAudioPipeline.reader.cancelReading()
-        fallbackAudioPipeline?.reader.cancelReading()
         assetWriter.cancelWriting()
         throw error
     }
