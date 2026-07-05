@@ -404,7 +404,6 @@ func exportCompositionPassthrough(
     outputURL: URL,
     hasFallbackAudio: Bool
 ) async throws {
-    let assetReader = try AVAssetReader(asset: composition)
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
 
     let videoTracks = composition.tracks(withMediaType: .video)
@@ -416,8 +415,9 @@ func exportCompositionPassthrough(
         throw AmbiMuxError.couldNotRetrieveFormatInformation
     }
 
+    let videoReader = try AVAssetReader(asset: composition)
     let videoReaderOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-    assetReader.add(videoReaderOutput)
+    videoReader.add(videoReaderOutput)
     let videoWriterInput = AVAssetWriterInput(
         mediaType: .video,
         outputSettings: nil,
@@ -428,6 +428,7 @@ func exportCompositionPassthrough(
     assetWriter.add(videoWriterInput)
 
     let audioTracks = composition.tracks(withMediaType: .audio)
+    var audioReaders: [AVAssetReader] = []
     var audioPipelines: [(readerOutput: AVAssetReaderTrackOutput, writerInput: AVAssetWriterInput)] = []
 
     for (index, track) in audioTracks.enumerated() {
@@ -436,8 +437,10 @@ func exportCompositionPassthrough(
             throw AmbiMuxError.couldNotRetrieveFormatInformation
         }
 
+        let audioReader = try AVAssetReader(asset: composition)
         let readerOutput = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-        assetReader.add(readerOutput)
+        audioReader.add(readerOutput)
+        audioReaders.append(audioReader)
 
         let writerInput = AVAssetWriterInput(
             mediaType: .audio,
@@ -470,7 +473,10 @@ func exportCompositionPassthrough(
 
     try assetWriter.start()
     assetWriter.startSession(atSourceTime: .zero)
-    try assetReader.start()
+    try videoReader.start()
+    for reader in audioReaders {
+        try reader.start()
+    }
 
     let videoFinished = OSAllocatedUnfairLock(initialState: false)
     let audioFinishedFlags = audioPipelines.map { _ in OSAllocatedUnfairLock(initialState: false) }
