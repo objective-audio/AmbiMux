@@ -152,31 +152,36 @@ nonisolated private func validateCompatibility(
     let refVideo = reference.video
     let otherVideo = other.video
 
-    if refVideo.codecType != otherVideo.codecType {
+    guard refVideo.codecType == otherVideo.codecType else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
             detail: "video codec differs"
         )
     }
-    if refVideo.width != otherVideo.width || refVideo.height != otherVideo.height {
+    guard refVideo.width == otherVideo.width,
+        refVideo.height == otherVideo.height
+    else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
             detail: "video resolution differs (\(refVideo.width)x\(refVideo.height) vs \(otherVideo.width)x\(otherVideo.height))"
         )
     }
-    if !frameRatesAreEquivalent(refVideo.frameRate, otherVideo.frameRate) {
+    guard frameRatesAreEquivalent(refVideo.frameRate, otherVideo.frameRate) else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
             detail: "video frame rate differs (\(refVideo.frameRate) vs \(otherVideo.frameRate) fps)"
         )
     }
-    if refVideo.transformA != otherVideo.transformA || refVideo.transformB != otherVideo.transformB
-        || refVideo.transformC != otherVideo.transformC || refVideo.transformD != otherVideo.transformD
-        || refVideo.transformTx != otherVideo.transformTx || refVideo.transformTy != otherVideo.transformTy
-    {
+    guard refVideo.transformA == otherVideo.transformA,
+        refVideo.transformB == otherVideo.transformB,
+        refVideo.transformC == otherVideo.transformC,
+        refVideo.transformD == otherVideo.transformD,
+        refVideo.transformTx == otherVideo.transformTx,
+        refVideo.transformTy == otherVideo.transformTy
+    else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
@@ -184,7 +189,7 @@ nonisolated private func validateCompatibility(
         )
     }
 
-    if reference.audioTracks.count != other.audioTracks.count {
+    guard reference.audioTracks.count == other.audioTracks.count else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
@@ -194,21 +199,21 @@ nonisolated private func validateCompatibility(
 
     for (index, refAudio) in reference.audioTracks.enumerated() {
         let otherAudio = other.audioTracks[index]
-        if refAudio.role != otherAudio.role {
+        guard refAudio.role == otherAudio.role else {
             throw AmbiMuxError.concatFormatMismatch(
                 referencePath: referencePath,
                 otherPath: otherPath,
                 detail: "audio track \(index + 1) role differs"
             )
         }
-        if !refAudio.asbd.isEquivalentStreamFormat(to: otherAudio.asbd) {
+        guard refAudio.asbd.isEquivalentStreamFormat(to: otherAudio.asbd) else {
             throw AmbiMuxError.concatFormatMismatch(
                 referencePath: referencePath,
                 otherPath: otherPath,
                 detail: "audio track \(index + 1) stream format differs"
             )
         }
-        if refAudio.channelLayoutTag != otherAudio.channelLayoutTag {
+        guard refAudio.channelLayoutTag == otherAudio.channelLayoutTag else {
             throw AmbiMuxError.concatFormatMismatch(
                 referencePath: referencePath,
                 otherPath: otherPath,
