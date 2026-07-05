@@ -224,7 +224,7 @@ nonisolated private func orderedAudioTracks(from asset: AVURLAsset) async throws
         guard let formatDescription = formatDescriptions.first,
             let asbd = formatDescription.audioStreamBasicDescription
         else {
-            continue
+            throw AmbiMuxError.couldNotGetAudioStreamDescription
         }
 
         let channels = Int(asbd.mChannelsPerFrame)
