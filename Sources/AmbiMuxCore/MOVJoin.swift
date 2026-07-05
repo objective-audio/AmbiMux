@@ -50,11 +50,18 @@ nonisolated private func audioTrackRole(for channelCount: Int) throws -> MOVJoin
     throw AmbiMuxError.invalidChannelCount(count: channelCount)
 }
 
-nonisolated private func collectAudioTrackSignatures(
+nonisolated private struct ClassifiedAudioTrack {
+    let track: AVAssetTrack
+    let role: MOVJoinFormatSignature.AudioTrackRole
+    let asbd: AudioStreamBasicDescription
+    let formatDescription: CMFormatDescription
+}
+
+nonisolated private func selectOrderedAudioTracks(
     from audioTracks: [AVAssetTrack]
-) async throws -> [MOVJoinFormatSignature.AudioTrackSignature] {
-    var ambisonics: MOVJoinFormatSignature.AudioTrackSignature?
-    var fallback: MOVJoinFormatSignature.AudioTrackSignature?
+) async throws -> [ClassifiedAudioTrack] {
+    var ambisonics: ClassifiedAudioTrack?
+    var fallback: ClassifiedAudioTrack?
 
     for track in audioTracks {
         let formatDescriptions = try await track.load(.formatDescriptions)
@@ -64,23 +71,15 @@ nonisolated private func collectAudioTrackSignatures(
             throw AmbiMuxError.couldNotGetAudioStreamDescription
         }
 
-        let channelCount = Int(asbd.mChannelsPerFrame)
-        let role = try audioTrackRole(for: channelCount)
-        let signature = MOVJoinFormatSignature.AudioTrackSignature(
-            role: role,
-            asbd: asbd,
-            channelLayoutTag: channelLayoutTag(from: formatDescription)
-        )
+        let role = try audioTrackRole(for: Int(asbd.mChannelsPerFrame))
+        let classified = ClassifiedAudioTrack(
+            track: track, role: role, asbd: asbd, formatDescription: formatDescription)
 
         switch role {
         case .ambisonics:
-            if ambisonics == nil {
-                ambisonics = signature
-            }
+            if ambisonics == nil { ambisonics = classified }
         case .fallback:
-            if fallback == nil {
-                fallback = signature
-            }
+            if fallback == nil { fallback = classified }
         }
     }
 
@@ -89,10 +88,21 @@ nonisolated private func collectAudioTrackSignatures(
     }
 
     var result = [ambisonics]
-    if let fallback {
-        result.append(fallback)
-    }
+    if let fallback { result.append(fallback) }
     return result
+}
+
+nonisolated private func collectAudioTrackSignatures(
+    from audioTracks: [AVAssetTrack]
+) async throws -> [MOVJoinFormatSignature.AudioTrackSignature] {
+    let classified = try await selectOrderedAudioTracks(from: audioTracks)
+    return classified.map { entry in
+        MOVJoinFormatSignature.AudioTrackSignature(
+            role: entry.role,
+            asbd: entry.asbd,
+            channelLayoutTag: channelLayoutTag(from: entry.formatDescription)
+        )
+    }
 }
 
 nonisolated func collectFormatSignature(from asset: AVURLAsset) async throws -> MOVJoinFormatSignature {
@@ -215,41 +225,8 @@ nonisolated private func orderedAudioTracks(from asset: AVURLAsset) async throws
     guard !audioTracks.isEmpty else {
         throw AmbiMuxError.noAudioTracksFound
     }
-
-    var ambisonicsTrack: AVAssetTrack?
-    var fallbackTrack: AVAssetTrack?
-
-    for track in audioTracks {
-        let formatDescriptions = try await track.load(.formatDescriptions)
-        guard let formatDescription = formatDescriptions.first,
-            let asbd = formatDescription.audioStreamBasicDescription
-        else {
-            throw AmbiMuxError.couldNotGetAudioStreamDescription
-        }
-
-        let channels = Int(asbd.mChannelsPerFrame)
-        if AmbisonicsOrder(channelCount: channels) != nil {
-            if ambisonicsTrack == nil {
-                ambisonicsTrack = track
-            }
-        } else if channels == 1 || channels == 2 {
-            if fallbackTrack == nil {
-                fallbackTrack = track
-            }
-        } else {
-            throw AmbiMuxError.invalidChannelCount(count: channels)
-        }
-    }
-
-    guard let ambisonics = ambisonicsTrack else {
-        throw AmbiMuxError.noAmbisonicsTrackFound
-    }
-
-    var result = [ambisonics]
-    if let fallback = fallbackTrack {
-        result.append(fallback)
-    }
-    return result
+    let classified = try await selectOrderedAudioTracks(from: audioTracks)
+    return classified.map(\.track)
 }
 
 private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutableComposition {
