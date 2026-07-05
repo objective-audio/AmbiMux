@@ -27,6 +27,11 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
     case ambisonicsLpcmFormatChangedMidStream
     case outputWritingFailed(message: String)
 
+    // Join / concat errors
+    case concatRequiresAtLeastTwoInputs
+    case concatFormatMismatch(referencePath: String, otherPath: String, detail: String)
+    case concatCompositionFailed(message: String)
+
     var errorDescription: String? {
         switch self {
         case .noAudioTracksFound:
@@ -72,6 +77,12 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
             return "Ambisonics LPCM format changed mid-stream"
         case .outputWritingFailed(let message):
             return "Output writing failed: \(message)"
+        case .concatRequiresAtLeastTwoInputs:
+            return "At least two input MOV files are required"
+        case .concatFormatMismatch(let referencePath, let otherPath, let detail):
+            return "Format mismatch between '\(referencePath)' and '\(otherPath)': \(detail)"
+        case .concatCompositionFailed(let message):
+            return "Composition failed: \(message)"
         }
     }
 }
