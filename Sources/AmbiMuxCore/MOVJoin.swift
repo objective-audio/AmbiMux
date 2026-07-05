@@ -137,6 +137,12 @@ nonisolated func collectFormatSignature(from asset: AVURLAsset) async throws -> 
     return MOVJoinFormatSignature(video: videoSignature, audioTracks: audioSignatures)
 }
 
+nonisolated private let joinFrameRateTolerance: Float = 0.01
+
+nonisolated private func frameRatesAreEquivalent(_ a: Float, _ b: Float) -> Bool {
+    abs(a - b) < joinFrameRateTolerance
+}
+
 nonisolated private func validateCompatibility(
     reference: MOVJoinFormatSignature,
     referencePath: String,
@@ -160,7 +166,7 @@ nonisolated private func validateCompatibility(
             detail: "video resolution differs (\(refVideo.width)x\(refVideo.height) vs \(otherVideo.width)x\(otherVideo.height))"
         )
     }
-    if refVideo.frameRate != otherVideo.frameRate {
+    if !frameRatesAreEquivalent(refVideo.frameRate, otherVideo.frameRate) {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
