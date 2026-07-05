@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreAudioTypes
+import CoreGraphics
 import CoreMedia
 import Foundation
 
@@ -16,12 +17,7 @@ struct MOVJoinFormatSignature: Sendable {
         let width: Int
         let height: Int
         let frameRate: Float
-        let transformA: CGFloat
-        let transformB: CGFloat
-        let transformC: CGFloat
-        let transformD: CGFloat
-        let transformTx: CGFloat
-        let transformTy: CGFloat
+        let preferredTransform: CGAffineTransform
     }
 
     struct AudioTrackSignature: Sendable {
@@ -119,12 +115,7 @@ nonisolated func collectFormatSignature(from asset: AVURLAsset) async throws -> 
         width: Int(naturalSize.width),
         height: Int(naturalSize.height),
         frameRate: nominalFrameRate,
-        transformA: preferredTransform.a,
-        transformB: preferredTransform.b,
-        transformC: preferredTransform.c,
-        transformD: preferredTransform.d,
-        transformTx: preferredTransform.tx,
-        transformTy: preferredTransform.ty
+        preferredTransform: preferredTransform
     )
 
     let audioTracks = try await asset.loadTracks(withMediaType: .audio)
@@ -175,13 +166,7 @@ nonisolated private func validateCompatibility(
             detail: "video frame rate differs (\(refVideo.frameRate) vs \(otherVideo.frameRate) fps)"
         )
     }
-    guard refVideo.transformA == otherVideo.transformA,
-        refVideo.transformB == otherVideo.transformB,
-        refVideo.transformC == otherVideo.transformC,
-        refVideo.transformD == otherVideo.transformD,
-        refVideo.transformTx == otherVideo.transformTx,
-        refVideo.transformTy == otherVideo.transformTy
-    else {
+    guard refVideo.preferredTransform == otherVideo.preferredTransform else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
