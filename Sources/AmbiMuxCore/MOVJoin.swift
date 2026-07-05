@@ -260,7 +260,7 @@ private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutab
     }
 
     let firstVideoTracks = try await firstAsset.loadTracks(withMediaType: .video)
-    guard firstVideoTracks.first != nil else {
+    guard let firstVideoTrack = firstVideoTracks.first else {
         throw AmbiMuxError.videoTrackNotFound
     }
 
@@ -272,6 +272,8 @@ private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutab
     ) else {
         throw AmbiMuxError.concatCompositionFailed(message: "Could not create composition video track")
     }
+
+    compositionVideoTrack.preferredTransform = try await firstVideoTrack.load(.preferredTransform)
 
     var compositionAudioTracks: [AVMutableCompositionTrack] = []
     for _ in firstOrderedAudio {

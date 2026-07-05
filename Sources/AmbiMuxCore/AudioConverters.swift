@@ -424,6 +424,7 @@ func exportCompositionPassthrough(
         sourceFormatHint: videoFormatDescription
     )
     videoWriterInput.expectsMediaDataInRealTime = false
+    videoWriterInput.transform = try await videoTrack.load(.preferredTransform)
     assetWriter.add(videoWriterInput)
 
     let audioTracks = composition.tracks(withMediaType: .audio)

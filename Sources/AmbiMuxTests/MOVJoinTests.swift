@@ -80,6 +80,51 @@ struct MOVJoinTests {
         #expect(Int(fallbackASBD.mChannelsPerFrame) == 2, "Fallback track should be 2ch")
     }
 
+    @Test func testRunJoinMOVPreservesPreferredTransform() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+
+        let clip1Path = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_transform_clip1.mov").path
+        let clip2Path = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_transform_clip2.mov").path
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_transform_output.mov").path
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: clip1Path,
+            outputAudioFormat: .apac
+        )
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: clip2Path,
+            outputAudioFormat: .apac
+        )
+
+        let clip1Asset = AVURLAsset(url: URL(fileURLWithPath: clip1Path))
+        let clip1Video = try await clip1Asset.loadTracks(withMediaType: .video)[0]
+        let sourceTransform = try await clip1Video.load(.preferredTransform)
+
+        try await runJoinMOV(inputPaths: [clip1Path, clip2Path], outputPath: outputPath)
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let outputVideoTracks = try await outputAsset.loadTracks(withMediaType: .video)
+        #expect(outputVideoTracks.count == 1, "Output should have one video track")
+
+        let outputTransform = try await outputVideoTracks[0].load(.preferredTransform)
+        #expect(
+            outputTransform == sourceTransform,
+            "Output video preferredTransform should match the source clips"
+        )
+    }
+
     @Test func testRunJoinMOVFailsWhenFormatMismatch() async throws {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
