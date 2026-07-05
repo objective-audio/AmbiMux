@@ -3,7 +3,7 @@
 # Invokes repository .build/release/ambimux (APAC output). Run from repo root or anywhere.
 #
 # Usage: batch-mux.sh [input_dir] [output_dir] [repo_root]
-# Defaults: workspace/mux-input  workspace/output  (repo root = 4 levels up from this script)
+# Defaults: workspace/mux-input  workspace/mux-output  (repo root = 4 levels up from this script)
 #
 # Environment:
 #   BATCH_MUX_SKIP_BUILD=1  — skip "swift build -c release" (not recommended; matches SKILL when unset)
@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_REPO="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 INPUT_DIR="${1:-workspace/mux-input}"
-OUTPUT_DIR="${2:-workspace/output}"
+OUTPUT_DIR="${2:-workspace/mux-output}"
 REPO_ROOT="${3:-$DEFAULT_REPO}"
 
 if [[ ! -d "$REPO_ROOT" ]]; then

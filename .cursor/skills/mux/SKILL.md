@@ -1,6 +1,6 @@
 ---
 name: mux
-description: Batch convert all .mov videos in workspace/mux-input/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise uses embedded Ambisonics (4/9/16ch). Primary spatial audio is output as APAC; if the same MOV also embeds mono/stereo, that track is passed through as a second audio track (fallback). Outputs to workspace/output/. Prefer .cursor/skills/mux/scripts/batch-mux.sh with required_permissions ["all"]. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing MOV files.
+description: Batch convert all .mov videos in workspace/mux-input/. For each MOV, auto-pairs with a prefix-matching external audio file (.mp4/.wav/.aiff, APAC or LPCM auto-detected) if available, otherwise uses embedded Ambisonics (4/9/16ch). Primary spatial audio is output as APAC; if the same MOV also embeds mono/stereo, that track is passed through as a second audio track (fallback). Outputs to workspace/mux-output/. Prefer .cursor/skills/mux/scripts/batch-mux.sh with required_permissions ["all"]. Use when the user mentions batch mux, APAC, LPCM, WAV, spatial audio, Vision Pro, workspace folder, embedded audio, or processing MOV files.
 ---
 
 # AmbiMux: workspace/ の MOV を一括変換（外部オーディオ優先・埋め込みフォールバック）
@@ -42,7 +42,7 @@ description: Batch convert all .mov videos in workspace/mux-input/. For each MOV
 ```
 workspace/
 ├── mux-input/        # 入力（.mov + 任意の外部オーディオ）
-└── output/           # 出力（変換済み .mov）
+└── mux-output/       # 出力（変換済み .mov）
 ```
 
 `workspace/` は `.gitignore` 想定。出力は常に `.mov`。

@@ -6,7 +6,7 @@
 - `video.mov`
 - `video_apac00000000.mp4`（APAC圧縮済み）
 
-出力（`workspace/output/`）:
+出力（`workspace/mux-output/`）:
 - `video_ambimux.mov`
 
 コマンド実行例:
@@ -14,7 +14,7 @@
 .build/release/ambimux \
   --audio "workspace/mux-input/video_apac00000000.mp4" \
   --video "workspace/mux-input/video.mov" \
-  --output "workspace/output/video_ambimux.mov"
+  --output "workspace/mux-output/video_ambimux.mov"
 ```
 
 ## Example 2: 外部オーディオ（LPCM WAV）とペアリング
@@ -23,7 +23,7 @@
 - `video.mov`
 - `video.wav`（4ch, 48kHz, 32-bit float LPCM）
 
-出力（`workspace/output/`）:
+出力（`workspace/mux-output/`）:
 - `video_ambimux.mov`（LPCMからAPACに変換された空間音声 + ステレオフォールバック）
 
 コマンド実行例:
@@ -31,7 +31,7 @@
 .build/release/ambimux \
   --audio "workspace/mux-input/video.wav" \
   --video "workspace/mux-input/video.mov" \
-  --output "workspace/output/video_ambimux.mov"
+  --output "workspace/mux-output/video_ambimux.mov"
 ```
 
 ## Example 3: 外部オーディオなし → 埋め込み Ambisonics（＋任意でモノ/ステレオ）
@@ -49,10 +49,10 @@
 ```bash
 .build/release/ambimux \
   --video "workspace/mux-input/scene_b.mov" \
-  --output "workspace/output/scene_b_ambimux.mov"
+  --output "workspace/mux-output/scene_b_ambimux.mov"
 ```
 
-出力（`workspace/output/`）:
+出力（`workspace/mux-output/`）:
 - `scene_b_ambimux.mov`（主トラック: 埋め込み Ambisonics を APAC に変換）
 - 入力に **1/2ch の別トラック** があれば、**第2音声トラックとしてパススルー**（フォールバック）され、検証ログ上は `Audio tracks: 2` になることがある
 
@@ -65,9 +65,9 @@
 - `test.mov` → 外部オーディオなし、埋め込みオーディオなし
 
 処理:
-1. `2026_0211_scene_a.mov` + `2026_0211_scene_a_apac00000000.mp4` → `workspace/output/2026_0211_scene_a_ambimux.mov`（APACパススルー）
-2. `2026_0212_demo.mov` + `2026_0212_demo_audio.wav` → `workspace/output/2026_0212_demo_ambimux.mov`（LPCMをAPACに変換）
-3. `2026_0213_field.mov` → 外部オーディオなし → 埋め込み Ambisonics を確認 → `workspace/output/2026_0213_field_ambimux.mov`（主: 埋め込みを APAC に。ステレオ等が別トラックにあれば第2トラックも出力）
+1. `2026_0211_scene_a.mov` + `2026_0211_scene_a_apac00000000.mp4` → `workspace/mux-output/2026_0211_scene_a_ambimux.mov`（APACパススルー）
+2. `2026_0212_demo.mov` + `2026_0212_demo_audio.wav` → `workspace/mux-output/2026_0212_demo_ambimux.mov`（LPCMをAPACに変換）
+3. `2026_0213_field.mov` → 外部オーディオなし → 埋め込み Ambisonics を確認 → `workspace/mux-output/2026_0213_field_ambimux.mov`（主: 埋め込みを APAC に。ステレオ等が別トラックにあれば第2トラックも出力）
 4. `test.mov` → 外部オーディオなし → 埋め込みオーディオなし → スキップ
 
 最終サマリ:
@@ -82,7 +82,7 @@
 - `clip.wav`（4ch LPCM）
 
 処理:
-- `clip.mov` + `clip_apac.mp4` → `workspace/output/clip_ambimux.mov`
+- `clip.mov` + `clip_apac.mp4` → `workspace/mux-output/clip_ambimux.mov`
   - `.mp4` が優先されるため、`clip.wav` は使用されない
 
 ## Example 6: .wav と .aiff が両方ある場合（.wav 優先）
@@ -93,7 +93,7 @@
 - `clip.aiff`（4ch LPCM）
 
 処理:
-- `clip.mov` + `clip.wav` → `workspace/output/clip_ambimux.mov`
+- `clip.mov` + `clip.wav` → `workspace/mux-output/clip_ambimux.mov`
   - `.wav` が優先されるため、`clip.aiff` は使用されない
 
 ## 注意事項
