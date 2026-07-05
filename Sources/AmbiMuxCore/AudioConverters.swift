@@ -398,3 +398,113 @@ func convertVideoWithAudioToMOV(
         throw AmbiMuxError.outputWritingFailed(message: errorMessage)
     }
 }
+
+func exportCompositionPassthrough(
+    composition: AVMutableComposition,
+    outputURL: URL,
+    hasFallbackAudio: Bool
+) async throws {
+    let assetReader = try AVAssetReader(asset: composition)
+    let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
+
+    let videoTracks = composition.tracks(withMediaType: .video)
+    guard let videoTrack = videoTracks.first else {
+        throw AmbiMuxError.videoTrackNotFound
+    }
+    let videoFormatDescriptions = try await videoTrack.load(.formatDescriptions)
+    guard let videoFormatDescription = videoFormatDescriptions.first else {
+        throw AmbiMuxError.couldNotRetrieveFormatInformation
+    }
+
+    let videoReaderOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+    assetReader.add(videoReaderOutput)
+    let videoWriterInput = AVAssetWriterInput(
+        mediaType: .video,
+        outputSettings: nil,
+        sourceFormatHint: videoFormatDescription
+    )
+    videoWriterInput.expectsMediaDataInRealTime = false
+    assetWriter.add(videoWriterInput)
+
+    let audioTracks = composition.tracks(withMediaType: .audio)
+    var audioPipelines: [(readerOutput: AVAssetReaderTrackOutput, writerInput: AVAssetWriterInput)] = []
+
+    for (index, track) in audioTracks.enumerated() {
+        let formatDescriptions = try await track.load(.formatDescriptions)
+        guard let formatDescription = formatDescriptions.first else {
+            throw AmbiMuxError.couldNotRetrieveFormatInformation
+        }
+
+        let readerOutput = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        assetReader.add(readerOutput)
+
+        let writerInput = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: nil,
+            sourceFormatHint: formatDescription
+        )
+        writerInput.expectsMediaDataInRealTime = false
+        writerInput.languageCode = "und"
+        writerInput.extendedLanguageTag = "und"
+
+        if index == 0 {
+            writerInput.marksOutputTrackAsEnabled = true
+        } else if hasFallbackAudio && index == 1 {
+            writerInput.marksOutputTrackAsEnabled = true
+            writerInput.marksOutputTrackAsEnabled = false
+        }
+
+        assetWriter.add(writerInput)
+        audioPipelines.append((readerOutput, writerInput))
+    }
+
+    if hasFallbackAudio, audioPipelines.count >= 2 {
+        let ambisonicsInput = audioPipelines[0].writerInput
+        let fallbackInput = audioPipelines[1].writerInput
+        let associationType = AVAssetTrack.AssociationType.audioFallback.rawValue
+        if fallbackInput.canAddTrackAssociation(withTrackOf: ambisonicsInput, type: associationType) {
+            fallbackInput.addTrackAssociation(withTrackOf: ambisonicsInput, type: associationType)
+        }
+    }
+
+    try assetWriter.start()
+    assetWriter.startSession(atSourceTime: .zero)
+    try assetReader.start()
+
+    let videoFinished = OSAllocatedUnfairLock(initialState: false)
+    let audioFinishedFlags = audioPipelines.map { _ in OSAllocatedUnfairLock(initialState: false) }
+
+    pump(
+        writerInput: videoWriterInput,
+        readerOutput: videoReaderOutput,
+        queueLabel: "jp.objective-audio.ambimux.join.video",
+        qos: .userInitiated,
+        finishedFlag: videoFinished
+    )
+
+    for (index, pipeline) in audioPipelines.enumerated() {
+        pump(
+            writerInput: pipeline.writerInput,
+            readerOutput: pipeline.readerOutput,
+            queueLabel: "jp.objective-audio.ambimux.join.audio.\(index)",
+            qos: .userInitiated,
+            finishedFlag: audioFinishedFlags[index]
+        )
+    }
+
+    try await Task {
+        while !(videoFinished.withLock { $0 })
+            || !audioFinishedFlags.allSatisfy({ $0.withLock { $0 } })
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }.value
+
+    await assetWriter.finishWriting()
+
+    if assetWriter.status == .completed {
+        return
+    }
+    let errorMessage = assetWriter.error?.localizedDescription ?? "Unknown error"
+    throw AmbiMuxError.outputWritingFailed(message: errorMessage)
+}
