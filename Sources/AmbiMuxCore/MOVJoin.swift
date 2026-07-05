@@ -16,7 +16,7 @@ struct MOVJoinFormatSignature: Sendable {
         let codecType: FourCharCode
         let width: Int
         let height: Int
-        let frameRate: Float
+        let nominalFrameRate: Float
         let preferredTransform: CGAffineTransform
     }
 
@@ -114,7 +114,7 @@ nonisolated func collectFormatSignature(from asset: AVURLAsset) async throws -> 
         codecType: CMFormatDescriptionGetMediaSubType(videoFormatDescription),
         width: Int(naturalSize.width),
         height: Int(naturalSize.height),
-        frameRate: nominalFrameRate,
+        nominalFrameRate: nominalFrameRate,
         preferredTransform: preferredTransform
     )
 
@@ -159,11 +159,11 @@ nonisolated private func validateCompatibility(
             detail: "video resolution differs (\(refVideo.width)x\(refVideo.height) vs \(otherVideo.width)x\(otherVideo.height))"
         )
     }
-    guard frameRatesAreEquivalent(refVideo.frameRate, otherVideo.frameRate) else {
+    guard frameRatesAreEquivalent(refVideo.nominalFrameRate, otherVideo.nominalFrameRate) else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
-            detail: "video frame rate differs (\(refVideo.frameRate) vs \(otherVideo.frameRate) fps)"
+            detail: "video frame rate differs (\(refVideo.nominalFrameRate) vs \(otherVideo.nominalFrameRate) fps)"
         )
     }
     guard refVideo.preferredTransform == otherVideo.preferredTransform else {
