@@ -302,11 +302,19 @@ private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutab
             )
         }
 
+        var audioInsertRanges: [CMTimeRange] = []
+        for audioTrack in orderedAudio {
+            let audioRange = try await audioTrack.load(.timeRange)
+            let clampedDuration = CMTimeMinimum(audioRange.duration, segmentRange.duration)
+            audioInsertRanges.append(
+                CMTimeRange(start: audioRange.start, duration: clampedDuration))
+        }
+
         do {
             try compositionVideoTrack.insertTimeRange(segmentRange, of: videoTrack, at: cursor)
             for (index, audioTrack) in orderedAudio.enumerated() {
                 try compositionAudioTracks[index].insertTimeRange(
-                    segmentRange, of: audioTrack, at: cursor)
+                    audioInsertRanges[index], of: audioTrack, at: cursor)
             }
         } catch {
             throw AmbiMuxError.concatCompositionFailed(message: error.localizedDescription)
