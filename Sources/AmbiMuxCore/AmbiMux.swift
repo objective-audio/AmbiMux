@@ -6,13 +6,13 @@ import Foundation
 public nonisolated enum VideoValidationSuccess: Equatable, Sendable {
     case noEmbeddedAudioUseExternal
     case ambisonicsWithoutAPAC
+    case alreadyHasAPAC
     case nonSpatialEmbeddedAudio
 }
 
 public nonisolated enum VideoValidationFailure: Equatable, Sendable {
     case noVideoTracks
     case nonAPACWithHOALayoutTag
-    case alreadyHasAPAC
     case missingAmbisonicsTrack
 }
 
@@ -29,6 +29,8 @@ public extension VideoValidationSuccess {
                 "No embedded audio tracks; use --audio with an external spatial audio file when muxing"
         case .ambisonicsWithoutAPAC:
             return "Ambisonics is present and APAC is not present"
+        case .alreadyHasAPAC:
+            return "APAC track is already present in the video"
         case .nonSpatialEmbeddedAudio:
             return "Embedded audio is present but neither APAC nor Ambisonics; still eligible"
         }
@@ -43,8 +45,6 @@ public extension VideoValidationFailure {
         case .nonAPACWithHOALayoutTag:
             return
                 "Non-APAC audio uses HOA ACN SN3D channel layout; expected only with APAC for this workflow"
-        case .alreadyHasAPAC:
-            return "APAC track is already present in the video"
         case .missingAmbisonicsTrack:
             return "No Ambisonics track (4/9/16ch) found in the video"
         }
