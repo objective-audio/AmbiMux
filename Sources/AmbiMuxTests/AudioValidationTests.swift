@@ -129,10 +129,10 @@ struct AudioValidationTests {
         )
 
         let result = try await validateVideoInputEligibility(videoPath: apacVideoPath)
-        if case .ineligible(.alreadyHasAPAC) = result {
+        if case .eligible(.alreadyHasAPAC) = result {
             #expect(Bool(true))
         } else {
-            Issue.record("Expected .ineligible(.alreadyHasAPAC), got \(result)")
+            Issue.record("Expected .eligible(.alreadyHasAPAC), got \(result)")
         }
     }
 }

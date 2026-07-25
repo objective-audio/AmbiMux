@@ -172,7 +172,7 @@ nonisolated func evaluateVideoInputEligibility(videoPath: String) async throws -
     }
 
     if hasAPAC {
-        return .ineligible(.alreadyHasAPAC)
+        return .eligible(.alreadyHasAPAC)
     }
     if hasAmbisonics {
         return .eligible(.ambisonicsWithoutAPAC)
