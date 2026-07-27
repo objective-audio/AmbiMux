@@ -144,14 +144,18 @@ struct AudioConvertersTests {
         )
     }
 
-    @Test func testAmbiMuxConversionWithEmbeddedLpcmOnly() async throws {
+    @Test(
+        arguments: ["test_4ch", "test_4ch_aac"]
+    )
+    func testAmbiMuxConversionWithEmbeddedLpcmOnly(videoResource: String) async throws {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_4ch", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: videoResource, withExtension: "mov")
         let sourceVideoAsset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
         let outputPath = URL(fileURLWithPath: cachePath)
-            .appendingPathComponent("test_embedded_lpcm_output.mov").path
+            .appendingPathComponent("test_embedded_\(videoResource)_output.mov").path
 
         try await convertVideoWithAudioToMOV(
             audioPath: videoPath,
@@ -170,11 +174,11 @@ struct AudioConvertersTests {
             source: sourceDuration,
             output: outputDuration,
             tolerance: durationToleranceSeconds,
-            context: "Embedded LPCM conversion"
+            context: "Embedded conversion (\(videoResource))"
         )
 
         let audioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
-        #expect(audioTracks.count == 1, "Embedded LPCM only → exactly 1 audio track")
+        #expect(audioTracks.count == 1, "Embedded Ambisonics only → exactly 1 audio track")
 
         let audioTrack = try #require(audioTracks.first, "Output file has no audio track")
         let formatDescriptions = try await audioTrack.load(.formatDescriptions)
