@@ -63,6 +63,44 @@ extension AudioStreamBasicDescription {
     }
 }
 
+/// 再エンコード時の正規デコードターゲット: float32 / interleaved LPCM（レートは 48k 上限）。
+nonisolated func decodeTargetLinearPCMASBD(
+    channelCount: Int,
+    sampleRate: Double
+) -> AudioStreamBasicDescription {
+    let rate = min(sampleRate, 48000)
+    let bytesPerFrame = UInt32(MemoryLayout<Float32>.size * channelCount)
+    return AudioStreamBasicDescription(
+        mSampleRate: rate,
+        mFormatID: kAudioFormatLinearPCM,
+        mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked
+            | kAudioFormatFlagsNativeEndian,
+        mBytesPerPacket: bytesPerFrame,
+        mFramesPerPacket: 1,
+        mBytesPerFrame: bytesPerFrame,
+        mChannelsPerFrame: UInt32(channelCount),
+        mBitsPerChannel: 32,
+        mReserved: 0
+    )
+}
+
+/// 再エンコード時の `AVAssetReaderTrackOutput` 用 LPCM `outputSettings`（HOA レイアウトは付けない）。
+nonisolated func linearPCMReaderOutputSettings(
+    channelCount: Int,
+    sampleRate: Double
+) -> [String: Any] {
+    let asbd = decodeTargetLinearPCMASBD(channelCount: channelCount, sampleRate: sampleRate)
+    return [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: asbd.mSampleRate,
+        AVNumberOfChannelsKey: channelCount,
+        AVLinearPCMBitDepthKey: Int(asbd.mBitsPerChannel),
+        AVLinearPCMIsFloatKey: true,
+        AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsNonInterleaved: false,
+    ]
+}
+
 /// トラック ASBD に合わせた HOA 付き LPCM の `AVAssetWriterInput` 用 `outputSettings`（レートは従来どおり 48k 上限）。
 nonisolated func linearPCMWriterOutputSettingsHOA(
     asbd: AudioStreamBasicDescription,

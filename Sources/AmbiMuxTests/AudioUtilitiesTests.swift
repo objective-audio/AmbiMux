@@ -307,6 +307,36 @@ struct AudioUtilitiesTests {
         #expect(!a.isEquivalentStreamFormat(to: b))
     }
 
+    // MARK: - linearPCMReaderOutputSettings / decodeTargetLinearPCMASBD
+
+    @Test func testLinearPCMReaderOutputSettingsMapsCanonicalFloat32() throws {
+        let settings = linearPCMReaderOutputSettings(channelCount: 4, sampleRate: 96000)
+
+        let formatID = try #require(settings[AVFormatIDKey] as? UInt32)
+        #expect(formatID == kAudioFormatLinearPCM)
+
+        let sampleRate = try #require(settings[AVSampleRateKey] as? Double)
+        #expect(sampleRate == 48000)
+
+        let channels = try #require(settings[AVNumberOfChannelsKey] as? Int)
+        #expect(channels == 4)
+
+        #expect(settings[AVLinearPCMIsFloatKey] as? Bool == true)
+        #expect(settings[AVLinearPCMIsBigEndianKey] as? Bool == false)
+        #expect(settings[AVLinearPCMIsNonInterleaved] as? Bool == false)
+        #expect(settings[AVLinearPCMBitDepthKey] as? Int == 32)
+        #expect(settings[AVChannelLayoutKey] == nil)
+    }
+
+    @Test func testDecodeTargetLinearPCMASBDPreservesSub48kSampleRate() {
+        let asbd = decodeTargetLinearPCMASBD(channelCount: 9, sampleRate: 44100)
+        #expect(asbd.mSampleRate == 44100)
+        #expect(asbd.mFormatID == kAudioFormatLinearPCM)
+        #expect(asbd.mChannelsPerFrame == 9)
+        #expect(asbd.mBitsPerChannel == 32)
+        #expect(asbd.mBytesPerFrame == 36)
+    }
+
     // MARK: - linearPCMWriterOutputSettingsHOA
 
     @Test func testLinearPCMWriterOutputSettingsHOAMapsFlagsAndRate() throws {
