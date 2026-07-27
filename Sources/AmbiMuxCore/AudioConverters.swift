@@ -63,23 +63,46 @@ private func makeAmbisonicsAudioPipeline(
     }
 
     let isSourceAPAC = asbdForReader.mFormatID == kAudioFormatAPAC
+    // 再エンコード時は Reader で正規 LPCM にデコードし、Writer へ非圧縮サンプルを渡す。APAC ソースはパススルー。
+    let needsEncode = !isSourceAPAC
 
-    // デコードはトラックのネイティブ形式のまま（outputSettings: nil）。HOA は append 直前に CMSampleBuffer の実 formatDescription にだけ付与する。
+    let channelCount: Int
+    let decodeSampleRate: Double
+    let decodeASBD: AudioStreamBasicDescription?
+    let readerOutputSettings: [String: Any]?
+    if needsEncode {
+        channelCount = Int(asbdForReader.mChannelsPerFrame)
+        guard AmbisonicsOrder(channelCount: channelCount) != nil else {
+            throw AmbiMuxError.invalidChannelCount(count: channelCount)
+        }
+        decodeSampleRate = min(asbdForReader.mSampleRate, 48000)
+        decodeASBD = decodeTargetLinearPCMASBD(
+            channelCount: channelCount, sampleRate: decodeSampleRate)
+        readerOutputSettings = linearPCMReaderOutputSettings(
+            channelCount: channelCount, sampleRate: decodeSampleRate)
+    } else {
+        channelCount = Int(asbdForReader.mChannelsPerFrame)
+        decodeSampleRate = asbdForReader.mSampleRate
+        decodeASBD = nil
+        readerOutputSettings = nil
+    }
+
     let audioAssetReader = try AVAssetReader(asset: audioAsset)
-    let audioReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+    let audioReaderOutput = AVAssetReaderTrackOutput(
+        track: audioTrack, outputSettings: readerOutputSettings)
     audioAssetReader.add(audioReaderOutput)
 
-    // lpcm/embeddedLpcm: MOV 書き込み時に CMSampleBuffer を実 ASBD のまま HOA に差し替え。APAC 出力は HOA 付きでエンコード、LPCM 出力はデコード ASBD に合わせた HOA 付き LPCM、それ以外はパススルー。
+    // APAC 出力は HOA 付きでエンコード、LPCM 出力はデコードターゲットに合わせた HOA 付き LPCM、APAC ソースはパススルー。
+    // HOA レイアウトは append 直前に mapSampleBuffer で付与する。
     let audioInput: AVAssetWriterInput
     if outputAudioFormat == .apac && !isSourceAPAC {
-        let channelCount = Int(asbdForReader.mChannelsPerFrame)
         guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
             throw AmbiMuxError.invalidChannelCount(count: channelCount)
         }
         let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
         let writerAudioSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatAPAC,
-            AVSampleRateKey: min(asbdForReader.mSampleRate, 48000),
+            AVSampleRateKey: decodeSampleRate,
             AVNumberOfChannelsKey: ambisonicsOrder.channelCount,
             AVChannelLayoutKey: layoutData,
             AVEncoderBitRateKey: 384000,
@@ -90,13 +113,15 @@ private func makeAmbisonicsAudioPipeline(
         ]
         audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerAudioSettings)
     } else if outputAudioFormat == .lpcm && !isSourceAPAC {
-        let channelCount = Int(asbdForReader.mChannelsPerFrame)
+        guard let decodeASBD else {
+            throw AmbiMuxError.couldNotGetAudioStreamDescription
+        }
         guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
             throw AmbiMuxError.invalidChannelCount(count: channelCount)
         }
         let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
         let writerAudioSettings = linearPCMWriterOutputSettingsHOA(
-            asbd: asbdForReader,
+            asbd: decodeASBD,
             channelCount: ambisonicsOrder.channelCount,
             layoutData: layoutData
         )
@@ -204,7 +229,7 @@ func convertVideoWithAudioToMOV(
         effectiveOutputFormat = .apac
     }
 
-    // lpcm・embeddedLpcm: デコードはネイティブ形式のまま。append 時に各 CMSampleBuffer の実 ASBD に HOA レイアウトのみ付与
+    // lpcm・embeddedLpcm: 再エンコード時は Reader で正規 LPCM にデコード。append 時に各 CMSampleBuffer の実 ASBD に HOA レイアウトのみ付与
     // apac: パススルー
     let audioAsset: AVURLAsset
     let ambisonicsTrack: AVAssetTrack

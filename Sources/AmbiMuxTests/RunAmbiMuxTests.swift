@@ -56,15 +56,19 @@ struct RunAmbiMuxTests {
         #expect(outputExists, "Output file should be created at \(outputPath)")
     }
 
-    @Test func testRunAmbiMuxSuccessWithEmbeddedLpcm() async throws {
+    @Test(
+        arguments: ["test_4ch", "test_4ch_aac"]
+    )
+    func testRunAmbiMuxSuccessWithEmbeddedLpcm(videoResource: String) async throws {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
         // embeddedLpcm: audioPath は nil（映像ファイルの埋め込みオーディオを使用）
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_4ch", withExtension: "mov")
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: videoResource, withExtension: "mov")
 
         let outputPath = URL(fileURLWithPath: cachePath)
-            .appendingPathComponent("runAmbi_embedded_output.mov").path
+            .appendingPathComponent("runAmbi_embedded_\(videoResource)_output.mov").path
 
         try await runAmbiMux(
             audioPath: nil,
@@ -89,7 +93,7 @@ struct RunAmbiMuxTests {
             Issue.record("Could not get format description")
             return
         }
-        #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Audio track should be 4ch APAC")
+        #expect(Int(asbdPtr.mChannelsPerFrame) == 4, "Audio track should be 4ch")
     }
 
     @Test func testRunAmbiMuxSuccessWithEmbeddedAmbisonicsOnSecondTrack() async throws {

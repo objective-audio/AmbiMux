@@ -68,8 +68,14 @@ struct AudioValidationTests {
         }
     }
 
-    @Test func testValidateVideoInputEligibilityAmbisonicsWithoutAPAC() async throws {
-        let videoPath = try TestResourceHelper.resourcePath(for: "test_4ch", withExtension: "mov")
+    @Test(
+        arguments: ["test_4ch", "test_4ch_aac"]
+    )
+    func testValidateVideoInputEligibilityAmbisonicsWithoutAPAC(videoResource: String)
+        async throws
+    {
+        let videoPath = try TestResourceHelper.resourcePath(
+            for: videoResource, withExtension: "mov")
         let result = try await validateVideoInputEligibility(videoPath: videoPath)
 
         if case .eligible(.ambisonicsWithoutAPAC) = result {
