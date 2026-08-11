@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Batch join: concatenate all .mov files under input dir in filename order into one output.
-# Invokes repository .build/release/ambimux join (passthrough). Run from repo root or anywhere.
+# Batch join: concatenate MOV clips into one output via ambimux join (passthrough).
+# Invokes repository .build/release/ambimux join. Run from repo root or anywhere.
 #
 # Usage: batch-join.sh [input_dir] [output_dir] [repo_root]
 # Defaults: workspace/join-input  workspace/join-output  (repo root = 4 levels up from this script)
+#
+# If input_dir/join.txt exists, use it as a manifest (line order + optional path@START-END).
+# Otherwise join all .mov files under input_dir in filename order (full length).
 #
 # Environment:
 #   BATCH_JOIN_SKIP_BUILD=1  — skip "swift build -c release" (not recommended; matches SKILL when unset)
@@ -32,12 +35,28 @@ abs_path() {
   printf '%s/%s\n' "$d" "$(basename "$1")"
 }
 
+# Strip optional @START-END suffix; print the path portion only.
+path_without_range() {
+  local spec="$1"
+  if [[ "$spec" == *@* ]]; then
+    local suffix="${spec##*@}"
+    if [[ "$suffix" =~ ^[0-9]+([.][0-9]+)?-[0-9]+([.][0-9]+)?$ ]]; then
+      printf '%s\n' "${spec%@*}"
+      return
+    fi
+  fi
+  printf '%s\n' "$spec"
+}
+
 mkdir -p "$OUTPUT_DIR"
 
 if [[ ! -d "$INPUT_DIR" ]]; then
   echo "error: input directory does not exist: $INPUT_DIR" >&2
   exit 1
 fi
+
+INPUT_DIR_ABS="$(cd "$INPUT_DIR" && pwd)"
+JOIN_TXT="$INPUT_DIR_ABS/join.txt"
 
 if [[ -z "${BATCH_JOIN_SKIP_BUILD:-}" ]]; then
   echo "==> swift build -c release (repo: $REPO_ROOT)"
@@ -52,47 +71,113 @@ if [[ ! -x "$AMBIMUX" ]]; then
   exit 1
 fi
 
-MOV_LIST=()
-while IFS= read -r mov; do
-  [[ -n "$mov" ]] && MOV_LIST+=("$mov")
-done < <(find "$INPUT_DIR" -name "*.mov" -type f | LC_ALL=C sort)
-MOV_COUNT="${#MOV_LIST[@]}"
+# JOIN_SPECS: arguments passed to ambimux join (abs path, optionally with @START-END)
+# DISPLAY_SPECS: human-readable lines for logs
+JOIN_SPECS=()
+DISPLAY_SPECS=()
+MODE=""
 
-if ((MOV_COUNT == 0)); then
-  echo "error: no .mov files found in $INPUT_DIR" >&2
+if [[ -f "$JOIN_TXT" ]]; then
+  MODE="manifest"
+  line_no=0
+  while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+    line_no=$((line_no + 1))
+    # Trim leading/trailing whitespace
+    line="${raw_line#"${raw_line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" ]] && continue
+    [[ "$line" == \#* ]] && continue
+
+    if [[ "$line" == *" "* || "$line" == *$'\t'* ]]; then
+      echo "error: join.txt line $line_no has whitespace (filenames with spaces are not supported): $line" >&2
+      exit 1
+    fi
+
+    if [[ "$line" == */* ]]; then
+      echo "error: join.txt line $line_no must be a basename under the input dir (no subdirectories): $line" >&2
+      exit 1
+    fi
+
+    file_part="$(path_without_range "$line")"
+    if [[ "$file_part" != *.mov ]]; then
+      echo "error: join.txt line $line_no must refer to a .mov file: $line" >&2
+      exit 1
+    fi
+
+    mov_path="$INPUT_DIR_ABS/$file_part"
+    if [[ ! -f "$mov_path" ]]; then
+      echo "error: join.txt line $line_no: file not found: $mov_path" >&2
+      exit 1
+    fi
+
+    mov_abs="$(abs_path "$mov_path")"
+    if [[ "$file_part" == "$line" ]]; then
+      JOIN_SPECS+=("$mov_abs")
+      DISPLAY_SPECS+=("$file_part")
+    else
+      range_suffix="${line#"$file_part"}"
+      JOIN_SPECS+=("${mov_abs}${range_suffix}")
+      DISPLAY_SPECS+=("$line")
+    fi
+  done <"$JOIN_TXT"
+else
+  MODE="scan"
+  while IFS= read -r mov; do
+    [[ -n "$mov" ]] || continue
+    mov_abs="$(abs_path "$mov")"
+    JOIN_SPECS+=("$mov_abs")
+    DISPLAY_SPECS+=("$(basename "$mov")")
+  done < <(find "$INPUT_DIR_ABS" -maxdepth 1 -name "*.mov" -type f | LC_ALL=C sort)
+fi
+
+SEG_COUNT="${#JOIN_SPECS[@]}"
+
+if ((SEG_COUNT == 0)); then
+  if [[ "$MODE" == "manifest" ]]; then
+    echo "error: join.txt has no segment entries: $JOIN_TXT" >&2
+  else
+    echo "error: no .mov files found in $INPUT_DIR" >&2
+  fi
   exit 1
 fi
 
-if ((MOV_COUNT == 1)); then
-  echo "error: at least two .mov files are required (found 1: ${MOV_LIST[0]})" >&2
+if ((SEG_COUNT == 1)); then
+  echo "error: at least two segments are required (found 1: ${DISPLAY_SPECS[0]})" >&2
   exit 1
 fi
 
-first_base="$(basename "${MOV_LIST[0]}" .mov)"
+first_file="$(path_without_range "${DISPLAY_SPECS[0]}")"
+first_base="$(basename "$first_file" .mov)"
 out_raw="$OUTPUT_DIR/${first_base}_joined.mov"
 out_abs="$(abs_path "$out_raw")"
 
-MOV_ABS=()
-for mov in "${MOV_LIST[@]}"; do
-  MOV_ABS+=("$(abs_path "$mov")")
-done
-
 echo ""
-echo "==> Joining ${MOV_COUNT} clips (filename order)"
-for mov in "${MOV_LIST[@]}"; do
-  echo "  - $(basename "$mov")"
+if [[ "$MODE" == "manifest" ]]; then
+  echo "==> Joining ${SEG_COUNT} segments (join.txt order)"
+  echo "    manifest: $JOIN_TXT"
+else
+  echo "==> Joining ${SEG_COUNT} clips (filename order, full length)"
+fi
+for spec in "${DISPLAY_SPECS[@]}"; do
+  echo "  - $spec"
 done
 echo "==> Output: $out_abs"
 echo ""
 
-if "$AMBIMUX" join "${MOV_ABS[@]}" --output "$out_abs"; then
+if "$AMBIMUX" join "${JOIN_SPECS[@]}" --output "$out_abs"; then
   echo ""
   echo "## 処理結果サマリ"
   echo ""
   echo "### 入力"
-  echo "- \`.mov\`ファイル: ${MOV_COUNT}件（ファイル名順）"
-  for mov in "${MOV_LIST[@]}"; do
-    echo "  - $(basename "$mov")"
+  if [[ "$MODE" == "manifest" ]]; then
+    echo "- モード: join.txt マニフェスト"
+    echo "- セグメント: ${SEG_COUNT}件（行順）"
+  else
+    echo "- モード: ディレクトリ走査"
+    echo "- \`.mov\`ファイル: ${SEG_COUNT}件（ファイル名順・全尺）"
+  fi
+  for spec in "${DISPLAY_SPECS[@]}"; do
+    echo "  - $spec"
   done
   echo ""
   echo "### 結果"
@@ -105,7 +190,13 @@ else
   echo "## 処理結果サマリ"
   echo ""
   echo "### 入力"
-  echo "- \`.mov\`ファイル: ${MOV_COUNT}件（ファイル名順）"
+  if [[ "$MODE" == "manifest" ]]; then
+    echo "- モード: join.txt マニフェスト"
+    echo "- セグメント: ${SEG_COUNT}件"
+  else
+    echo "- モード: ディレクトリ走査"
+    echo "- \`.mov\`ファイル: ${SEG_COUNT}件（ファイル名順・全尺）"
+  fi
   echo ""
   echo "### 結果"
   echo "- 失敗: ambimux join exit $ec"
