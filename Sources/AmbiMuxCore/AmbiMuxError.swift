@@ -31,6 +31,8 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
     case concatRequiresAtLeastTwoInputs
     case concatFormatMismatch(referencePath: String, otherPath: String, detail: String)
     case concatCompositionFailed(message: String)
+    case concatInvalidTimeRange(path: String, detail: String)
+    case concatInvalidSegmentArgument(argument: String, detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -83,6 +85,10 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
             return "Format mismatch between '\(referencePath)' and '\(otherPath)': \(detail)"
         case .concatCompositionFailed(let message):
             return "Composition failed: \(message)"
+        case .concatInvalidTimeRange(let path, let detail):
+            return "Invalid time range for '\(path)': \(detail)"
+        case .concatInvalidSegmentArgument(let argument, let detail):
+            return "Invalid join segment '\(argument)': \(detail)"
         }
     }
 }

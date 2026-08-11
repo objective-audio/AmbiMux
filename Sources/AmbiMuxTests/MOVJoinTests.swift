@@ -178,4 +178,116 @@ struct MOVJoinTests {
             )
         }
     }
+
+    @Test func testParseJoinSegmentArgument() throws {
+        let full = try parseJoinSegmentArgument("/tmp/clip.mov")
+        #expect(full == JoinSegment(path: "/tmp/clip.mov"))
+
+        let ranged = try parseJoinSegmentArgument("/tmp/clip.mov@1.5-12")
+        #expect(
+            ranged == JoinSegment(path: "/tmp/clip.mov", startSeconds: 1.5, endSeconds: 12)
+        )
+
+        let atInName = try parseJoinSegmentArgument("/tmp/clip@name.mov")
+        #expect(atInName == JoinSegment(path: "/tmp/clip@name.mov"))
+
+        #expect(throws: AmbiMuxError.self) {
+            try parseJoinSegmentArgument("/tmp/clip.mov@5-1")
+        }
+    }
+
+    @Test func testRunJoinMOVWithTimeRanges() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+
+        let clip1Path = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_range_clip1.mov").path
+        let clip2Path = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_range_clip2.mov").path
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_range_output.mov").path
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: clip1Path,
+            outputAudioFormat: .apac
+        )
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: clip2Path,
+            outputAudioFormat: .apac
+        )
+
+        let clip1Asset = AVURLAsset(url: URL(fileURLWithPath: clip1Path))
+        let clip1Video = try await clip1Asset.loadTracks(withMediaType: .video)[0]
+        let clip1Duration = CMTimeGetSeconds(try await clip1Video.load(.timeRange).duration)
+        #expect(clip1Duration > 1.0, "Test clip should be longer than 1s for range join")
+
+        let segmentDuration = 0.5
+        try await runJoinMOV(
+            segments: [
+                JoinSegment(path: clip1Path, startSeconds: 0, endSeconds: segmentDuration),
+                JoinSegment(path: clip2Path, startSeconds: 0, endSeconds: segmentDuration),
+            ],
+            outputPath: outputPath
+        )
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let outputVideoTracks = try await outputAsset.loadTracks(withMediaType: .video)
+        #expect(outputVideoTracks.count == 1)
+
+        let outputDuration = CMTimeGetSeconds(
+            try await outputVideoTracks[0].load(.timeRange).duration)
+        #expect(
+            abs(outputDuration - (segmentDuration * 2)) < 0.15,
+            "Output duration should equal sum of trimmed segments"
+        )
+    }
+
+    @Test func testRunJoinMOVFailsWhenTimeRangeOutOfBounds() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+
+        let clip1Path = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_oob_clip1.mov").path
+        let clip2Path = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_oob_clip2.mov").path
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_oob_output.mov").path
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: clip1Path,
+            outputAudioFormat: .apac
+        )
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: clip2Path,
+            outputAudioFormat: .apac
+        )
+
+        await #expect(throws: AmbiMuxError.self) {
+            try await runJoinMOV(
+                segments: [
+                    JoinSegment(path: clip1Path, startSeconds: 0, endSeconds: 9999),
+                    JoinSegment(path: clip2Path),
+                ],
+                outputPath: outputPath
+            )
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: outputPath))
+    }
 }

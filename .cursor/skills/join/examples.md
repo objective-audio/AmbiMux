@@ -36,6 +36,17 @@
   --output workspace/join-output/clip_a_joined.mov
 ```
 
+## Example 2b: 区間指定（秒）
+
+各クリップの `[start, end)` を `@START-END` で指定（混在可。`@` 無しは全尺）:
+
+```bash
+.build/release/ambimux join \
+  workspace/join-input/clip_a.mov@1.5-12.0 \
+  workspace/join-input/clip_b.mov@0-8.0 \
+  --output workspace/join-output/clip_a_joined.mov
+```
+
 ## Example 3: フォーマット不一致（失敗）
 
 入力（`workspace/join-input/`）:
@@ -68,3 +79,4 @@
 - 結合順は **ファイル名** で決まる。意図した順序にするため、ファイル名のプレフィックス（日付・シーン番号等）を揃える
 - 全クリップの映像解像度・フレームレート・音声フォーマットが一致している必要がある
 - 結合はパススルーのため、APAC エンコードは行われない（mux 済みクリップをそのまま連結）
+- 区間指定（`path@START-END`）は CLI のみ。単位は秒。バッチは全尺結合

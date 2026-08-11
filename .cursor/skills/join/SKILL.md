@@ -1,6 +1,6 @@
 ---
 name: join
-description: Join all .mov files in workspace/join-input/ in filename order into one MOV using ambimux join (passthrough, no re-encode). Requires at least two inputs with matching video and audio formats (typical use: concatenating mux-output *_ambimux.mov clips). Outputs to workspace/join-output/{first_basename}_joined.mov. Prefer .cursor/skills/join/scripts/batch-join.sh with required_permissions ["all"]. Use when the user mentions join, concatenate, 結合, clip merge, or chaining mux outputs.
+description: Join all .mov files in workspace/join-input/ in filename order into one MOV using ambimux join (passthrough, no re-encode). Requires at least two inputs with matching video and audio formats (typical use: concatenating mux-output *_ambimux.mov clips). CLI supports optional per-clip trim via path@START-END (seconds). Outputs to workspace/join-output/{first_basename}_joined.mov. Prefer .cursor/skills/join/scripts/batch-join.sh with required_permissions ["all"]. Use when the user mentions join, concatenate, 結合, clip merge, trim ranges, or chaining mux outputs.
 ---
 
 # AmbiMux: workspace/ の MOV をファイル名順に結合
@@ -38,6 +38,7 @@ description: Join all .mov files in workspace/join-input/ in filename order into
 | 出力ディレクトリ | `workspace/join-output/`（デフォルト） |
 | 出力ファイル名 | **先頭 `.mov` のベース名 + `_joined.mov`**（例: `clip_a.mov` が先頭 → `clip_a_joined.mov`） |
 | 結合方式 | `ambimux join` — 映像・音声ともパススルー |
+| CLI 区間指定 | `path@START-END`（秒）。バッチは全尺のみ |
 
 ## フォルダ構造
 
@@ -94,6 +95,14 @@ workspace/
 **対処:**
 - ファイルが破損していないか、正しい MOV か確認
 
+### `concatInvalidTimeRange` / `concatInvalidSegmentArgument`
+
+**原因:**
+- `@START-END` の値が不正（`start >= end`、負値）、またはソース尺を超えている
+
+**対処:**
+- 秒単位で `start < end` かつクリップ尺内になるよう指定する（例: `clip.mov@1.5-12.0`）
+
 ### `invalidChannelCount`
 
 **原因:**
@@ -104,4 +113,4 @@ workspace/
 
 ## 例
 
-入力ファイルの組み合わせの参考は [examples.md](examples.md)。実行手順は上記 **batch-join.sh** のみとする。
+入力ファイルの組み合わせの参考は [examples.md](examples.md)。全尺の一括結合は **batch-join.sh**、区間付き結合は CLI の `path@START-END` を使う。
