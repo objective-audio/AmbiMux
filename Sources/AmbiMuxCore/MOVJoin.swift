@@ -218,6 +218,60 @@ nonisolated private func validateCompatibility(
     }
 }
 
+// MARK: - Segment model
+
+/// One join input: a MOV path with an optional half-open time range `[start, end)` in seconds.
+public struct JoinSegment: Sendable, Equatable {
+    public let path: String
+    public let startSeconds: Double?
+    public let endSeconds: Double?
+
+    nonisolated public init(path: String, startSeconds: Double? = nil, endSeconds: Double? = nil) {
+        self.path = path
+        self.startSeconds = startSeconds
+        self.endSeconds = endSeconds
+    }
+}
+
+/// Parses `path` or `path@START-END` (seconds). If the suffix after the last `@` is not a valid
+/// range, the whole argument is treated as a path.
+nonisolated public func parseJoinSegmentArgument(_ argument: String) throws -> JoinSegment {
+    guard let atIndex = argument.lastIndex(of: "@"), atIndex > argument.startIndex else {
+        return JoinSegment(path: argument)
+    }
+
+    let path = String(argument[..<atIndex])
+    let rangePart = String(argument[argument.index(after: atIndex)...])
+    guard !path.isEmpty else {
+        throw AmbiMuxError.concatInvalidSegmentArgument(
+            argument: argument,
+            detail: "path before '@' is empty"
+        )
+    }
+
+    guard let dashIndex = rangePart.firstIndex(of: "-"), dashIndex > rangePart.startIndex,
+        dashIndex < rangePart.index(before: rangePart.endIndex)
+    else {
+        // Not a time-range suffix; treat the whole argument as a literal path.
+        return JoinSegment(path: argument)
+    }
+
+    let startText = String(rangePart[..<dashIndex])
+    let endText = String(rangePart[rangePart.index(after: dashIndex)...])
+    guard let start = Double(startText), let end = Double(endText) else {
+        return JoinSegment(path: argument)
+    }
+
+    guard start >= 0, end > start else {
+        throw AmbiMuxError.concatInvalidSegmentArgument(
+            argument: argument,
+            detail: "expected start < end with non-negative seconds (got \(startText)-\(endText))"
+        )
+    }
+
+    return JoinSegment(path: path, startSeconds: start, endSeconds: end)
+}
+
 // MARK: - Composition
 
 nonisolated private func orderedAudioTracks(from asset: AVURLAsset) async throws -> [AVAssetTrack] {
@@ -229,19 +283,62 @@ nonisolated private func orderedAudioTracks(from asset: AVURLAsset) async throws
     return classified.map(\.track)
 }
 
-private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutableComposition {
+nonisolated private let joinTimeRangeToleranceSeconds: Double = 0.001
+
+nonisolated private func resolveSourceTimeRange(
+    for videoTrack: AVAssetTrack,
+    segment: JoinSegment
+) async throws -> CMTimeRange {
+    let fullRange = try await videoTrack.load(.timeRange)
+    let timescale = fullRange.duration.timescale == 0 ? 600 : fullRange.duration.timescale
+    let fullStartSeconds = CMTimeGetSeconds(fullRange.start)
+    let fullEndSeconds = fullStartSeconds + CMTimeGetSeconds(fullRange.duration)
+
+    let startSeconds = segment.startSeconds ?? fullStartSeconds
+    let endSeconds = segment.endSeconds ?? fullEndSeconds
+
+    guard startSeconds >= 0, endSeconds > startSeconds else {
+        throw AmbiMuxError.concatInvalidTimeRange(
+            path: segment.path,
+            detail: "start (\(startSeconds)) must be < end (\(endSeconds)) and non-negative"
+        )
+    }
+
+    if startSeconds + joinTimeRangeToleranceSeconds < fullStartSeconds
+        || endSeconds > fullEndSeconds + joinTimeRangeToleranceSeconds
+    {
+        throw AmbiMuxError.concatInvalidTimeRange(
+            path: segment.path,
+            detail:
+                "range \(startSeconds)-\(endSeconds)s is outside media \(fullStartSeconds)-\(fullEndSeconds)s"
+        )
+    }
+
+    let clampedStart = max(startSeconds, fullStartSeconds)
+    let clampedEnd = min(endSeconds, fullEndSeconds)
+    let startTime = CMTime(seconds: clampedStart, preferredTimescale: timescale)
+    let endTime = CMTime(seconds: clampedEnd, preferredTimescale: timescale)
+    return CMTimeRange(start: startTime, end: endTime)
+}
+
+private struct ValidatedJoinAsset {
+    let segment: JoinSegment
+    let asset: AVURLAsset
+}
+
+private func buildComposition(from items: [ValidatedJoinAsset]) async throws -> AVMutableComposition {
     let composition = AVMutableComposition()
 
-    guard let firstAsset = assets.first else {
+    guard let firstItem = items.first else {
         throw AmbiMuxError.concatRequiresAtLeastTwoInputs
     }
 
-    let firstVideoTracks = try await firstAsset.loadTracks(withMediaType: .video)
+    let firstVideoTracks = try await firstItem.asset.loadTracks(withMediaType: .video)
     guard let firstVideoTrack = firstVideoTracks.first else {
         throw AmbiMuxError.videoTrackNotFound
     }
 
-    let firstOrderedAudio = try await orderedAudioTracks(from: firstAsset)
+    let firstOrderedAudio = try await orderedAudioTracks(from: firstItem.asset)
 
     guard let compositionVideoTrack = composition.addMutableTrack(
         withMediaType: .video,
@@ -264,14 +361,14 @@ private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutab
     }
 
     var cursor = CMTime.zero
-    for asset in assets {
-        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+    for item in items {
+        let videoTracks = try await item.asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else {
             throw AmbiMuxError.videoTrackNotFound
         }
 
-        let segmentRange = try await videoTrack.load(.timeRange)
-        let orderedAudio = try await orderedAudioTracks(from: asset)
+        let segmentRange = try await resolveSourceTimeRange(for: videoTrack, segment: item.segment)
+        let orderedAudio = try await orderedAudioTracks(from: item.asset)
 
         guard orderedAudio.count == compositionAudioTracks.count else {
             throw AmbiMuxError.concatCompositionFailed(
@@ -282,22 +379,39 @@ private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutab
         var audioInsertRanges: [CMTimeRange] = []
         for audioTrack in orderedAudio {
             let audioRange = try await audioTrack.load(.timeRange)
-            let clampedDuration = CMTimeMinimum(audioRange.duration, segmentRange.duration)
-            audioInsertRanges.append(
-                CMTimeRange(start: audioRange.start, duration: clampedDuration))
+            let audioEnd = CMTimeAdd(audioRange.start, audioRange.duration)
+            let overlapStart = CMTimeMaximum(segmentRange.start, audioRange.start)
+            let overlapEnd = CMTimeMinimum(CMTimeRangeGetEnd(segmentRange), audioEnd)
+            let overlapDuration = CMTimeSubtract(overlapEnd, overlapStart)
+            guard CMTIME_IS_NUMERIC(overlapDuration),
+                CMTimeCompare(overlapDuration, .zero) > 0
+            else {
+                throw AmbiMuxError.concatInvalidTimeRange(
+                    path: item.segment.path,
+                    detail: "requested range has no overlapping audio"
+                )
+            }
+            audioInsertRanges.append(CMTimeRange(start: overlapStart, duration: overlapDuration))
+        }
+
+        // Keep A/V insert durations aligned to the video segment.
+        let videoDuration = segmentRange.duration
+        let alignedAudioRanges: [CMTimeRange] = audioInsertRanges.map { audioRange in
+            let duration = CMTimeMinimum(audioRange.duration, videoDuration)
+            return CMTimeRange(start: audioRange.start, duration: duration)
         }
 
         do {
             try compositionVideoTrack.insertTimeRange(segmentRange, of: videoTrack, at: cursor)
             for (index, audioTrack) in orderedAudio.enumerated() {
                 try compositionAudioTracks[index].insertTimeRange(
-                    audioInsertRanges[index], of: audioTrack, at: cursor)
+                    alignedAudioRanges[index], of: audioTrack, at: cursor)
             }
         } catch {
             throw AmbiMuxError.concatCompositionFailed(message: error.localizedDescription)
         }
 
-        cursor = CMTimeAdd(cursor, segmentRange.duration)
+        cursor = CMTimeAdd(cursor, videoDuration)
     }
 
     return composition
@@ -306,22 +420,29 @@ private func buildComposition(from assets: [AVURLAsset]) async throws -> AVMutab
 // MARK: - Public API
 
 nonisolated public func runJoinMOV(inputPaths: [String], outputPath: String) async throws {
-    guard inputPaths.count >= 2 else {
+    try await runJoinMOV(
+        segments: inputPaths.map { JoinSegment(path: $0) },
+        outputPath: outputPath
+    )
+}
+
+nonisolated public func runJoinMOV(segments: [JoinSegment], outputPath: String) async throws {
+    guard segments.count >= 2 else {
         throw AmbiMuxError.concatRequiresAtLeastTwoInputs
     }
 
-    for path in inputPaths {
-        guard FileManager.default.fileExists(atPath: path) else {
-            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: path])
+    for segment in segments {
+        guard FileManager.default.fileExists(atPath: segment.path) else {
+            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: segment.path])
         }
     }
 
     var referenceSignature: MOVJoinFormatSignature?
     var referencePath: String?
-    var assets: [AVURLAsset] = []
+    var items: [ValidatedJoinAsset] = []
 
-    for path in inputPaths {
-        let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+    for segment in segments {
+        let asset = AVURLAsset(url: URL(fileURLWithPath: segment.path))
         let signature = try await collectFormatSignature(from: asset)
 
         if let referenceSignature, let referencePath {
@@ -329,31 +450,31 @@ nonisolated public func runJoinMOV(inputPaths: [String], outputPath: String) asy
                 reference: referenceSignature,
                 referencePath: referencePath,
                 other: signature,
-                otherPath: path
+                otherPath: segment.path
             )
         } else {
             referenceSignature = signature
-            referencePath = path
+            referencePath = segment.path
         }
 
-        assets.append(asset)
+        items.append(ValidatedJoinAsset(segment: segment, asset: asset))
     }
 
     let hasFallbackAudio = (referenceSignature?.audioTracks.count ?? 0) > 1
 
     try await joinValidatedAssets(
-        assets: assets,
+        items: items,
         outputPath: outputPath,
         hasFallbackAudio: hasFallbackAudio
     )
 }
 
 private func joinValidatedAssets(
-    assets: [AVURLAsset],
+    items: [ValidatedJoinAsset],
     outputPath: String,
     hasFallbackAudio: Bool
 ) async throws {
-    let composition = try await buildComposition(from: assets)
+    let composition = try await buildComposition(from: items)
     try await exportCompositionPassthrough(
         composition: composition,
         outputURL: URL(fileURLWithPath: outputPath),
