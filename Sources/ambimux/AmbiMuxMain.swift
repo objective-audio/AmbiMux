@@ -1,5 +1,6 @@
 import AmbiMuxCore
 import ArgumentParser
+import Darwin
 import Foundation
 
 extension AudioOutputFormat: ExpressibleByArgument {}
@@ -14,4 +15,9 @@ struct AmbiMuxMain: AsyncParsableCommand {
         subcommands: [MuxCommand.self, ValidateCommand.self, JoinCommand.self],
         defaultSubcommand: MuxCommand.self
     )
+
+    static func main() async {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        await main(nil as [String]?)
+    }
 }
