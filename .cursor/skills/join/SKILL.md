@@ -1,6 +1,6 @@
 ---
 name: join
-description: Join MOV clips via batch-join.sh — either all .mov in workspace/join-input/ (filename order, full length) or segments listed in join-input/join.txt (line order, optional path@START-END seconds). Passthrough, no re-encode; matching video/audio formats required. Outputs to workspace/join-output/{first_basename}_joined.mov. Prefer .cursor/skills/join/scripts/batch-join.sh with required_permissions ["all"]. Use when the user mentions join, concatenate, 結合, clip merge, trim ranges, join.txt, or chaining mux outputs.
+description: Join MOV clips via batch-join.sh — either all .mov in workspace/join-input/ (filename order, full length) or segments listed in join-input/join.txt (line order, optional path@START-END seconds). A single segment with @START-END trims without concatenating. Passthrough, no re-encode; matching video/audio formats required when joining two or more. Outputs to workspace/join-output/{first_basename}_joined.mov. Prefer .cursor/skills/join/scripts/batch-join.sh with required_permissions ["all"]. Use when the user mentions join, concatenate, 結合, clip merge, trim ranges, join.txt, or chaining mux outputs.
 ---
 
 # AmbiMux: workspace/ の MOV を結合
@@ -9,8 +9,8 @@ description: Join MOV clips via batch-join.sh — either all .mov in workspace/j
 
 `workspace/join-input/` のクリップを **1本の MOV** に結合する。
 
-- 入力は **2セグメント以上** 必須
-- 全クリップの映像・音声フォーマットが一致している必要がある（主用途: `mux-output/` の `*_ambimux.mov` を連結）
+- 入力は **1セグメント以上**（0件はエラー）。1セグメントは全尺コピーまたは `@START-END` による切り出し
+- 2セグメント以上のとき、全クリップの映像・音声フォーマットが一致している必要がある（主用途: `mux-output/` の `*_ambimux.mov` を連結）
 - 結合は **パススルー**（再エンコードなし）
 
 ## 前提条件
@@ -35,7 +35,7 @@ description: Join MOV clips via batch-join.sh — either all .mov in workspace/j
 | 入力ディレクトリ | `workspace/join-input/`（デフォルト） |
 | マニフェストあり | `join-input/join.txt` がある → **行順**で結合。区間は `file.mov@START-END`（秒）。未記載の `.mov` は無視 |
 | マニフェストなし | 直下の全 `.mov` を **ファイル名順・全尺** で結合 |
-| 最低セグメント数 | **2以上**。0・1 はエラー |
+| 最低セグメント数 | **1以上**。0 はエラー。1行の `@START-END` は切り出し |
 | 出力ディレクトリ | `workspace/join-output/`（デフォルト） |
 | 出力ファイル名 | **先頭セグメントのベース名 + `_joined.mov`** |
 | 結合方式 | `ambimux join` — 映像・音声ともパススルー |
@@ -51,14 +51,14 @@ clip_c.mov
 ```
 
 - 1行 = 1セグメント（入力ディレクトリ直下の **ベース名のみ**）
-- `@` 無し → 全尺。同じファイルを複数行書いて複数区間をつなげてよい
+- `@` 無し → 全尺。1行だけなら切り出し（または全尺コピー）。同じファイルを複数行書いて複数区間をつなげてよい
 - ファイル名に空白・サブディレクトリは不可
 
 ## フォルダ構造
 
 ```
 workspace/
-├── join-input/     # 結合する .mov（2本以上）+ 任意で join.txt
+├── join-input/     # 結合または切り出す .mov（1本以上）+ 任意で join.txt
 └── join-output/    # {先頭}_joined.mov
 ```
 
@@ -66,13 +66,13 @@ workspace/
 
 ## エラーハンドリング
 
-### `concatRequiresAtLeastTwoInputs`
+### `concatRequiresAtLeastOneInput`
 
 **原因:**
-- 入力セグメントが1本以下（走査結果または `join.txt`）
+- 入力セグメントが0件（走査結果または `join.txt`）
 
 **対処:**
-- `join-input/` に2本以上の互換クリップを置く、または `join.txt` に2行以上書く
+- `join-input/` に `.mov` を置く、または `join.txt` に1行以上書く
 
 ### `concatFormatMismatch`
 

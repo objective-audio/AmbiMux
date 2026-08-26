@@ -141,11 +141,6 @@ if ((SEG_COUNT == 0)); then
   exit 1
 fi
 
-if ((SEG_COUNT == 1)); then
-  echo "error: at least two segments are required (found 1: ${DISPLAY_SPECS[0]})" >&2
-  exit 1
-fi
-
 first_file="$(path_without_range "${DISPLAY_SPECS[0]}")"
 first_base="$(basename "$first_file" .mov)"
 out_raw="$OUTPUT_DIR/${first_base}_joined.mov"

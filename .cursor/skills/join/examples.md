@@ -44,6 +44,23 @@ clip_a.mov@20-25
 
 実行は Example 1 と同じ `batch-join.sh`。
 
+## Example 1c: 1セグメントの切り出し（join.txt）
+
+入力（`workspace/join-input/`）:
+
+- `clip_a.mov`
+- `join.txt`:
+
+```text
+clip_a.mov@1.5-12.0
+```
+
+出力:
+
+- `clip_a_joined.mov`（指定区間のみ、パススルー）
+
+実行は Example 1 と同じ `batch-join.sh`。
+
 ## Example 2: 手動 CLI
 
 入力（`workspace/join-input/`）:
@@ -90,8 +107,9 @@ clip_a.mov@20-25
 | 状況 | 結果 |
 |------|------|
 | `join-input/` に `.mov` が0件（かつ `join.txt` なし） | スクリプトがエラー終了 |
-| `join-input/` に `.mov` が1件のみ（かつ `join.txt` なし） | スクリプトがエラー終了（2本以上必要） |
-| `join.txt` の有効行が1行以下 | スクリプトがエラー終了 |
+| `join-input/` に `.mov` が1件のみ（かつ `join.txt` なし） | その1本を全尺で書き出す |
+| `join.txt` の有効行が0行 | スクリプトがエラー終了 |
+| `join.txt` の有効行が1行（`@START-END` あり） | 切り出しとして成功 |
 | `join.txt` に書いたファイルが無い | スクリプトがエラー終了 |
 
 ## 典型的なワークフロー

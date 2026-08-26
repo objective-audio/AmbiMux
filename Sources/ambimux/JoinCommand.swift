@@ -6,12 +6,12 @@ struct JoinCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "join",
         abstract:
-            "Join multiple MOV files with matching video and audio formats. Optional per-clip range: path@START-END (seconds)."
+            "Join MOV files with matching video and audio formats, or trim a single clip. Optional per-clip range: path@START-END (seconds)."
     )
 
     @Argument(
         help:
-            "Input MOV paths in order (at least two). Append @START-END in seconds to trim, e.g. clip.mov@1.5-12"
+            "Input MOV paths in order (at least one; a single clip with @START-END trims). Append @START-END in seconds, e.g. clip.mov@1.5-12"
     )
     var inputs: [String]
 
