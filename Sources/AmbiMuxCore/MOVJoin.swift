@@ -330,7 +330,7 @@ private func buildComposition(from items: [ValidatedJoinAsset]) async throws -> 
     let composition = AVMutableComposition()
 
     guard let firstItem = items.first else {
-        throw AmbiMuxError.concatRequiresAtLeastTwoInputs
+        throw AmbiMuxError.concatRequiresAtLeastOneInput
     }
 
     let firstVideoTracks = try await firstItem.asset.loadTracks(withMediaType: .video)
@@ -427,8 +427,8 @@ nonisolated public func runJoinMOV(inputPaths: [String], outputPath: String) asy
 }
 
 nonisolated public func runJoinMOV(segments: [JoinSegment], outputPath: String) async throws {
-    guard segments.count >= 2 else {
-        throw AmbiMuxError.concatRequiresAtLeastTwoInputs
+    guard segments.count >= 1 else {
+        throw AmbiMuxError.concatRequiresAtLeastOneInput
     }
 
     for segment in segments {

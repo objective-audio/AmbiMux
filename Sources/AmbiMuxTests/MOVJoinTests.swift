@@ -164,19 +164,67 @@ struct MOVJoinTests {
         #expect(!outputExists, "Output file should not be created on format mismatch")
     }
 
-    @Test func testRunJoinMOVFailsWhenOnlyOneInput() async throws {
+    @Test func testRunJoinMOVFailsWhenNoInputs() async throws {
         let cachePath = try TestResourceHelper.createTestDirectory()
         defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
 
         let outputPath = URL(fileURLWithPath: cachePath)
-            .appendingPathComponent("join_single_output.mov").path
+            .appendingPathComponent("join_empty_output.mov").path
 
-        await #expect(throws: AmbiMuxError.concatRequiresAtLeastTwoInputs) {
+        await #expect(throws: AmbiMuxError.concatRequiresAtLeastOneInput) {
             try await runJoinMOV(
-                inputPaths: ["/tmp/nonexistent.mov"],
+                inputPaths: [],
                 outputPath: outputPath
             )
         }
+    }
+
+    @Test func testRunJoinMOVSucceedsWithSingleRangedInput() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+
+        let clipPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_single_clip.mov").path
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_single_output.mov").path
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: clipPath,
+            outputAudioFormat: .apac
+        )
+
+        let clipAsset = AVURLAsset(url: URL(fileURLWithPath: clipPath))
+        let clipVideo = try await clipAsset.loadTracks(withMediaType: .video)[0]
+        let clipDuration = CMTimeGetSeconds(try await clipVideo.load(.timeRange).duration)
+        #expect(clipDuration > 1.0, "Test clip should be longer than 1s for range trim")
+
+        let segmentDuration = 0.5
+        try await runJoinMOV(
+            segments: [
+                JoinSegment(path: clipPath, startSeconds: 0, endSeconds: segmentDuration)
+            ],
+            outputPath: outputPath
+        )
+
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Trimmed output file should be created")
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let outputVideoTracks = try await outputAsset.loadTracks(withMediaType: .video)
+        #expect(outputVideoTracks.count == 1, "Output should have one video track")
+
+        let outputDuration = CMTimeGetSeconds(
+            try await outputVideoTracks[0].load(.timeRange).duration)
+        #expect(
+            abs(outputDuration - segmentDuration) < 0.15,
+            "Output duration should equal the trimmed segment"
+        )
     }
 
     @Test func testParseJoinSegmentArgument() throws {
