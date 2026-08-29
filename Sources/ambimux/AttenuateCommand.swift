@@ -19,22 +19,22 @@ struct AttenuateCommand: AsyncParsableCommand {
     var outputFilePath: String?
 
     @Option(
-        name: .customLong("gain"),
-        help: "Attenuation in dB (0 or negative)."
+        name: .customLong("db"),
+        help: "Amount to lower the level in dB (0 or positive)."
     )
-    var gain: Double?
+    var db: Double?
 
     mutating func run() async throws {
         guard let outputPath = outputFilePath else {
             throw ValidationError("--output is required")
         }
-        guard let gainDb = gain else {
-            throw ValidationError("--gain is required")
+        guard let db else {
+            throw ValidationError("--db is required")
         }
-        guard gainDb <= 0 else {
-            throw ValidationError("--gain must be 0 or negative (boosting is not allowed)")
+        guard db >= 0 else {
+            throw ValidationError("--db must be 0 or positive (boosting is not allowed)")
         }
         try await runAttenuateMOV(
-            inputPath: input, outputPath: outputPath, gainDb: gainDb)
+            inputPath: input, outputPath: outputPath, gainDb: -db)
     }
 }

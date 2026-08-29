@@ -11,7 +11,7 @@
 - **APAC Passthrough**: APAC input is always passed through without re-encoding
 - **MOV Output**: Output in MOV container format compatible with Vision Pro
 - **Video Preservation**: Preserves original video tracks
-- **APAC attenuate**: Lower APAC Ambisonics level with `--gain` (never boosts)
+- **APAC attenuate**: Lower APAC Ambisonics level with `--db` (never boosts)
 
 ## Installation
 
@@ -58,13 +58,13 @@ ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/
 
 ### Attenuate APAC audio
 
-Lower the embedded APAC level and write a new MOV. Video is copied; APAC is decoded, scaled, and re-encoded. `--gain` must be 0 dB or negative (never boosts).
+Lower the embedded APAC level and write a new MOV. Video is copied; APAC is decoded, scaled, and re-encoded. `--db` must be 0 or positive (never boosts).
 
 ```bash
-ambimux attenuate clip.mov --gain -3.5 --output clip_quiet.mov
+ambimux attenuate clip.mov --db 3.5 --output clip_quiet.mov
 ```
 
-- `--gain`: Attenuation in dB (≤ 0)
+- `--db`: Amount to lower the level in dB (≥ 0)
 - `--output`, `-o`: Output MOV path (required)
 
 ## Technical Specifications
