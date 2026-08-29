@@ -29,31 +29,7 @@ description: Batch-lower APAC Ambisonics level in MOVs via batch-attenuate.sh. R
 .cursor/skills/attenuate/scripts/batch-attenuate.sh
 ```
 
-起動手順:
-
-- `required_permissions: ["all"]`、`block_until_ms: 0`（バックグラウンド）
-- `notify_on_output` の pattern は `BATCH_ATTENUATE_DONE exit=` のみ（`Attenuate: gain` は使わない）
-- 起動直後にターミナルが running であることだけ確認する
-- **AwaitShell は使わない。ポーリングもしない。確認したらターンを終える**
-- ユーザーへは「起動した」ことだけ伝える（サマリはまだ出さない）
-
-**完了とみなす条件**（次の3つが揃うまで報告しない）:
-
-- stdout に `BATCH_ATTENUATE_DONE exit=N`
-- ターミナルフッタに `exit_code:`（プロセス終了）
-- `workspace/attenuate-output/.batch-attenuate.done`（出力 dir が引数ならその直下）があり、中身が `exit=N`（**この起動のあと**に作られたもの。前回の残骸は使わない）
-
-完了通知（`notify_on_output` またはシェル終了）が来たら、上記 3 点を確認してからサマリを報告する。
-
-通知前にユーザー発言が来た場合:
-
-- すぐ上記 3 点を確認する
-- 揃っていればサマリを報告する
-- 揃っていなければ「まだ実行中」とだけ返し、**待ち直さない**（再びターンを終える）
-
-`exit=0` ならサマリを成功としてユーザーへ報告する。非0なら失敗サマリをそのまま報告する。
-
-**完了にしない:** `Attenuating` / `Output dir:` / `swift build` / `Attenuate: gain` 単体。出力 `.mov` がディレクトリに見えただけでも完了にしない。`Attenuate: gain` のあとにスクリプトが次ファイルまたはサマリを出し、exit code が確定するまでがジョブ全体。
+呼び出しが戻ったら、スクリプトが出した処理サマリを報告する。`exit=0` なら成功、非0なら失敗サマリをそのまま報告する。
 
 ## 入力・出力のルール（スクリプトと同じ）
 
