@@ -34,6 +34,10 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
     case concatInvalidTimeRange(path: String, detail: String)
     case concatInvalidSegmentArgument(argument: String, detail: String)
 
+    // Attenuate
+    case couldNotAccessAudioSampleData
+    case attenuateGainMustNotBoost
+
     var errorDescription: String? {
         switch self {
         case .noAudioTracksFound:
@@ -89,6 +93,10 @@ enum AmbiMuxError: Error, LocalizedError, Equatable {
             return "Invalid time range for '\(path)': \(detail)"
         case .concatInvalidSegmentArgument(let argument, let detail):
             return "Invalid join segment '\(argument)': \(detail)"
+        case .couldNotAccessAudioSampleData:
+            return "Could not access audio sample data"
+        case .attenuateGainMustNotBoost:
+            return "Attenuation gain must be 0 dB or negative (boosting is not allowed)"
         }
     }
 }

@@ -1,4 +1,6 @@
 import AVFoundation
+import Accelerate
+import CoreAudio
 import CoreAudioTypes
 import CoreMedia
 import Foundation
@@ -84,6 +86,45 @@ nonisolated func decodeTargetLinearPCMASBD(
     )
 }
 
+/// mux / attenuate 共通の APAC `AVAssetWriterInput` 用 `outputSettings`。
+nonisolated func apacWriterOutputSettings(
+    channelCount: Int,
+    sampleRate: Double
+) throws -> [String: Any] {
+    guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
+        throw AmbiMuxError.invalidChannelCount(count: channelCount)
+    }
+    let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
+    return [
+        AVFormatIDKey: kAudioFormatAPAC,
+        AVSampleRateKey: sampleRate,
+        AVNumberOfChannelsKey: ambisonicsOrder.channelCount,
+        AVChannelLayoutKey: layoutData,
+        AVEncoderBitRateKey: 384000,
+        AVEncoderContentSourceKey: AVAudioContentSource.appleAV_Spatial_Offline.rawValue,
+        AVEncoderDynamicRangeControlConfigurationKey: AVAudioDynamicRangeControlConfiguration
+            .movie.rawValue,
+        AVEncoderASPFrequencyKey: 75,
+    ]
+}
+
+/// フォールバック再エンコード用の float32 interleaved LPCM（HOA レイアウトなし）。
+nonisolated func linearPCMWriterOutputSettings(
+    channelCount: Int,
+    sampleRate: Double
+) -> [String: Any] {
+    let rate = min(sampleRate, 48000)
+    return [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: rate,
+        AVNumberOfChannelsKey: channelCount,
+        AVLinearPCMBitDepthKey: 32,
+        AVLinearPCMIsFloatKey: true,
+        AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsNonInterleaved: false,
+    ]
+}
+
 /// 再エンコード時の `AVAssetReaderTrackOutput` 用 LPCM `outputSettings`（HOA レイアウトは付けない）。
 nonisolated func linearPCMReaderOutputSettings(
     channelCount: Int,
@@ -123,15 +164,194 @@ nonisolated func linearPCMWriterOutputSettingsHOA(
     ]
 }
 
+nonisolated func requireAPACAmbisonicsTrack(in asset: AVURLAsset) async throws -> AVAssetTrack {
+    let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+    guard !audioTracks.isEmpty else {
+        throw AmbiMuxError.noAudioTracksFound
+    }
+
+    var ambisonicsTrack: AVAssetTrack?
+    var ambisonicsIsAPAC = false
+    var apacInvalidChannelCount: Int?
+
+    for track in audioTracks {
+        let formatDescriptions = try await track.load(.formatDescriptions)
+        guard let formatDescription = formatDescriptions.first,
+            let asbd = formatDescription.audioStreamBasicDescription
+        else {
+            continue
+        }
+        let channels = Int(asbd.mChannelsPerFrame)
+        let isAPAC = asbd.mFormatID == kAudioFormatAPAC
+
+        if AmbisonicsOrder(channelCount: channels) != nil {
+            if ambisonicsTrack == nil {
+                ambisonicsTrack = track
+                ambisonicsIsAPAC = isAPAC
+            }
+        } else if isAPAC {
+            apacInvalidChannelCount = channels
+        }
+    }
+
+    if let ambisonicsTrack {
+        guard ambisonicsIsAPAC else {
+            throw AmbiMuxError.expectedAPACAudio
+        }
+        return ambisonicsTrack
+    }
+    if let count = apacInvalidChannelCount {
+        throw AmbiMuxError.invalidChannelCount(count: count)
+    }
+    throw AmbiMuxError.noAmbisonicsTrackFound
+}
+
+/// Interleaved float32 の PCM を `CMSampleBuffer` からコピーする。
+nonisolated func copyInterleavedFloat32(from sampleBuffer: CMSampleBuffer) throws -> [Float] {
+    guard let format = CMSampleBufferGetFormatDescription(sampleBuffer),
+        let asbd = format.audioStreamBasicDescription
+    else {
+        throw AmbiMuxError.couldNotGetAudioStreamDescription
+    }
+    let isFloat = (asbd.mFormatFlags & UInt32(kAudioFormatFlagIsFloat)) != 0
+    guard isFloat, asbd.mBitsPerChannel == 32 else {
+        throw AmbiMuxError.couldNotAccessAudioSampleData
+    }
+
+    let channelCount = Int(asbd.mChannelsPerFrame)
+    let isNonInterleaved = (asbd.mFormatFlags & UInt32(kAudioFormatFlagIsNonInterleaved)) != 0
+    let bufferCount = isNonInterleaved ? max(channelCount, 1) : 1
+    let bufferListSize = AudioBufferList.sizeInBytes(maximumBuffers: bufferCount)
+
+    let ablRaw = UnsafeMutableRawPointer.allocate(
+        byteCount: bufferListSize, alignment: MemoryLayout<AudioBuffer>.alignment)
+    defer { ablRaw.deallocate() }
+    ablRaw.initializeMemory(as: UInt8.self, repeating: 0, count: bufferListSize)
+    let ablPtr = ablRaw.assumingMemoryBound(to: AudioBufferList.self)
+
+    var blockBuffer: CMBlockBuffer?
+    let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+        sampleBuffer,
+        bufferListSizeNeededOut: nil,
+        bufferListOut: ablPtr,
+        bufferListSize: bufferListSize,
+        blockBufferAllocator: kCFAllocatorDefault,
+        blockBufferMemoryAllocator: kCFAllocatorDefault,
+        flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+        blockBufferOut: &blockBuffer
+    )
+    guard status == noErr else {
+        throw AmbiMuxError.couldNotAccessAudioSampleData
+    }
+
+    let abl = UnsafeMutableAudioBufferListPointer(ablPtr)
+    if isNonInterleaved {
+        guard abl.count == channelCount, let first = abl.first else {
+            throw AmbiMuxError.couldNotAccessAudioSampleData
+        }
+        let frames = Int(first.mDataByteSize) / MemoryLayout<Float>.size
+        var interleaved = [Float](repeating: 0, count: frames * channelCount)
+        for channel in 0..<channelCount {
+            guard let data = abl[channel].mData else {
+                throw AmbiMuxError.couldNotAccessAudioSampleData
+            }
+            let src = data.assumingMemoryBound(to: Float.self)
+            for frame in 0..<frames {
+                interleaved[frame * channelCount + channel] = src[frame]
+            }
+        }
+        return interleaved
+    }
+
+    guard let data = abl.first?.mData else {
+        throw AmbiMuxError.couldNotAccessAudioSampleData
+    }
+    let count = Int(abl[0].mDataByteSize) / MemoryLayout<Float>.size
+    if count == 0 {
+        return []
+    }
+    let src = data.assumingMemoryBound(to: Float.self)
+    return Array(UnsafeBufferPointer(start: src, count: count))
+}
+
+/// Interleaved float32 PCM に線形ゲインをかけ、同じタイミングの新しい `CMSampleBuffer` を返す。
+nonisolated func sampleBufferByApplyingLinearGain(
+    _ sampleBuffer: CMSampleBuffer,
+    linearGain: Float
+) throws -> CMSampleBuffer {
+    if linearGain == 1 {
+        return sampleBuffer
+    }
+    guard let format = CMSampleBufferGetFormatDescription(sampleBuffer) else {
+        throw AmbiMuxError.ambisonicsSampleBufferMissingFormatDescription
+    }
+    guard let asbd = format.audioStreamBasicDescription else {
+        throw AmbiMuxError.couldNotGetAudioStreamDescription
+    }
+    let isFloat = (asbd.mFormatFlags & UInt32(kAudioFormatFlagIsFloat)) != 0
+    guard isFloat, asbd.mBitsPerChannel == 32 else {
+        throw AmbiMuxError.couldNotAccessAudioSampleData
+    }
+
+    var samples = try copyInterleavedFloat32(from: sampleBuffer)
+    if samples.isEmpty {
+        return sampleBuffer
+    }
+    var gain = linearGain
+    samples.withUnsafeMutableBufferPointer { buf in
+        guard let base = buf.baseAddress, !buf.isEmpty else { return }
+        vDSP_vsmul(base, 1, &gain, base, 1, vDSP_Length(buf.count))
+    }
+
+    let length = samples.count * MemoryLayout<Float>.size
+    var newBlock: CMBlockBuffer?
+    var status = CMBlockBufferCreateWithMemoryBlock(
+        allocator: kCFAllocatorDefault,
+        memoryBlock: nil,
+        blockLength: length,
+        blockAllocator: kCFAllocatorDefault,
+        customBlockSource: nil,
+        offsetToData: 0,
+        dataLength: length,
+        flags: 0,
+        blockBufferOut: &newBlock
+    )
+    guard status == kCMBlockBufferNoErr, let newBlock else {
+        throw AmbiMuxError.couldNotAccessAudioSampleData
+    }
+    status = samples.withUnsafeBytes { raw in
+        guard let base = raw.baseAddress else { return -1 }
+        return CMBlockBufferReplaceDataBytes(
+            with: base,
+            blockBuffer: newBlock,
+            offsetIntoDestination: 0,
+            dataLength: length
+        )
+    }
+    guard status == kCMBlockBufferNoErr else {
+        throw AmbiMuxError.couldNotAccessAudioSampleData
+    }
+
+    return try sampleBufferReplacingFormatDescription(
+        sampleBuffer, newFormat: format, newDataBuffer: newBlock)
+}
+
 /// 音声データはそのまま、`formatDescription` だけ差し替えた `CMSampleBuffer` を返す。
+/// `newDataBuffer` を渡すとデータも差し替える。
 nonisolated func sampleBufferReplacingFormatDescription(
     _ sampleBuffer: CMSampleBuffer,
-    newFormat: CMFormatDescription
+    newFormat: CMFormatDescription,
+    newDataBuffer: CMBlockBuffer? = nil
 ) throws -> CMSampleBuffer {
     guard CMSampleBufferGetFormatDescription(sampleBuffer) != nil else {
         return sampleBuffer
     }
-    guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+    let dataBuffer: CMBlockBuffer
+    if let newDataBuffer {
+        dataBuffer = newDataBuffer
+    } else if let existing = CMSampleBufferGetDataBuffer(sampleBuffer) {
+        dataBuffer = existing
+    } else {
         return sampleBuffer
     }
     let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
