@@ -28,14 +28,14 @@ description: Join MOV clips via batch-join.sh — either all .mov in workspace/j
 .cursor/skills/join/scripts/batch-join.sh
 ```
 
-バックグラウンド起動してよい。**完了条件**は次の両方:
+**Shell 実行時の必須オプション:**
 
-- stdout に `BATCH_JOIN_DONE exit=` が出ている
-- シェルプロセスが終了している
+- `required_permissions: ["all"]`
+- `block_until_ms: 3600000`（1時間。未指定の既定30秒や `0` だと裏に回り、結合完了後も待ち状態になる）
 
-`exit=0` ならサマリを成功としてユーザーへ報告する。非0なら失敗サマリをそのまま報告する。
+**バックグラウンド禁止**（`block_until_ms: 0` にしない）。コマンドが戻ったら **同じターンで** サマリを報告する。終了後の追加ポーリングや、通知待ちのためのターン終了はしない。
 
-**完了にしない:** `Joining` / `Output:` / `swift build` / `Join completed:` 単体。`Join completed:` のあとにスクリプトがサマリを出し、exit code が確定するまでがジョブ全体。
+`BATCH_JOIN_DONE exit=` がスクリプト完了の印。`exit=0` ならサマリを成功として報告し、非0なら失敗サマリをそのまま報告する。`Join completed:` 単体では終わったことにしない（その直後にサマリと `BATCH_JOIN_DONE` が出る）。
 
 ## 入力・出力のルール（スクリプトと同じ）
 
