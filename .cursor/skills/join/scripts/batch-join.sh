@@ -13,6 +13,9 @@
 
 set -uo pipefail
 
+# Always emit this last so agents can treat process exit as complete only after this line.
+trap 'echo "BATCH_JOIN_DONE exit=$?"' EXIT
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_REPO="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 

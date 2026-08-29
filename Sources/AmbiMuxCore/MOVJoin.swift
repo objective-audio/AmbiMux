@@ -2,6 +2,7 @@ import AVFoundation
 import CoreAudioTypes
 import CoreGraphics
 import CoreMedia
+import Darwin
 import Foundation
 
 // MARK: - Format signature
@@ -30,17 +31,22 @@ struct MOVJoinFormatSignature: Sendable {
     let audioTracks: [AudioTrackSignature]
 }
 
-nonisolated private func channelLayoutTag(from formatDescription: CMFormatDescription) -> AudioChannelLayoutTag? {
+nonisolated private func channelLayoutTag(from formatDescription: CMFormatDescription)
+    -> AudioChannelLayoutTag?
+{
     var layoutSize: Int = 0
-    guard let channelLayout = CMAudioFormatDescriptionGetChannelLayout(
-        formatDescription, sizeOut: &layoutSize)
+    guard
+        let channelLayout = CMAudioFormatDescriptionGetChannelLayout(
+            formatDescription, sizeOut: &layoutSize)
     else {
         return nil
     }
     return channelLayout.pointee.mChannelLayoutTag
 }
 
-nonisolated private func audioTrackRole(for channelCount: Int) throws -> MOVJoinFormatSignature.AudioTrackRole {
+nonisolated private func audioTrackRole(for channelCount: Int) throws
+    -> MOVJoinFormatSignature.AudioTrackRole
+{
     if AmbisonicsOrder(channelCount: channelCount) != nil {
         return .ambisonics
     }
@@ -105,7 +111,9 @@ nonisolated private func collectAudioTrackSignatures(
     }
 }
 
-nonisolated func collectFormatSignature(from asset: AVURLAsset) async throws -> MOVJoinFormatSignature {
+nonisolated func collectFormatSignature(from asset: AVURLAsset) async throws
+    -> MOVJoinFormatSignature
+{
     let videoTracks = try await asset.loadTracks(withMediaType: .video)
     guard let videoTrack = videoTracks.first else {
         throw AmbiMuxError.videoTrackNotFound
@@ -166,14 +174,16 @@ nonisolated private func validateCompatibility(
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
-            detail: "video resolution differs (\(refVideo.width)x\(refVideo.height) vs \(otherVideo.width)x\(otherVideo.height))"
+            detail:
+                "video resolution differs (\(refVideo.width)x\(refVideo.height) vs \(otherVideo.width)x\(otherVideo.height))"
         )
     }
     guard frameRatesAreEquivalent(refVideo.nominalFrameRate, otherVideo.nominalFrameRate) else {
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
-            detail: "video frame rate differs (\(refVideo.nominalFrameRate) vs \(otherVideo.nominalFrameRate) fps)"
+            detail:
+                "video frame rate differs (\(refVideo.nominalFrameRate) vs \(otherVideo.nominalFrameRate) fps)"
         )
     }
     guard refVideo.preferredTransform == otherVideo.preferredTransform else {
@@ -188,7 +198,8 @@ nonisolated private func validateCompatibility(
         throw AmbiMuxError.concatFormatMismatch(
             referencePath: referencePath,
             otherPath: otherPath,
-            detail: "audio track count differs (\(reference.audioTracks.count) vs \(other.audioTracks.count))"
+            detail:
+                "audio track count differs (\(reference.audioTracks.count) vs \(other.audioTracks.count))"
         )
     }
 
@@ -326,7 +337,8 @@ private struct ValidatedJoinAsset {
     let asset: AVURLAsset
 }
 
-private func buildComposition(from items: [ValidatedJoinAsset]) async throws -> AVMutableComposition {
+private func buildComposition(from items: [ValidatedJoinAsset]) async throws -> AVMutableComposition
+{
     let composition = AVMutableComposition()
 
     guard let firstItem = items.first else {
@@ -340,22 +352,28 @@ private func buildComposition(from items: [ValidatedJoinAsset]) async throws -> 
 
     let firstOrderedAudio = try await orderedAudioTracks(from: firstItem.asset)
 
-    guard let compositionVideoTrack = composition.addMutableTrack(
-        withMediaType: .video,
-        preferredTrackID: kCMPersistentTrackID_Invalid
-    ) else {
-        throw AmbiMuxError.concatCompositionFailed(message: "Could not create composition video track")
+    guard
+        let compositionVideoTrack = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        )
+    else {
+        throw AmbiMuxError.concatCompositionFailed(
+            message: "Could not create composition video track")
     }
 
     compositionVideoTrack.preferredTransform = try await firstVideoTrack.load(.preferredTransform)
 
     var compositionAudioTracks: [AVMutableCompositionTrack] = []
     for _ in firstOrderedAudio {
-        guard let track = composition.addMutableTrack(
-            withMediaType: .audio,
-            preferredTrackID: kCMPersistentTrackID_Invalid
-        ) else {
-            throw AmbiMuxError.concatCompositionFailed(message: "Could not create composition audio track")
+        guard
+            let track = composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            )
+        else {
+            throw AmbiMuxError.concatCompositionFailed(
+                message: "Could not create composition audio track")
         }
         compositionAudioTracks.append(track)
     }
@@ -481,4 +499,5 @@ private func joinValidatedAssets(
         hasFallbackAudio: hasFallbackAudio
     )
     print("Join completed: \(outputPath)")
+    fflush(stdout)
 }
