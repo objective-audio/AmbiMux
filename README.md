@@ -11,6 +11,7 @@
 - **APAC Passthrough**: APAC input is always passed through without re-encoding
 - **MOV Output**: Output in MOV container format compatible with Vision Pro
 - **Video Preservation**: Preserves original video tracks
+- **APAC attenuate**: Lower APAC Ambisonics level with `--gain` (never boosts)
 
 ## Installation
 
@@ -54,6 +55,17 @@ ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/
 - `--audio-output`: Output audio format when input is LPCM: `lpcm` (default) or `apac`
 - `--video`, `-v`: Path to input video file
 - `--output`, `-o`: Output file path (optional, defaults to the same name as the video file with `.mov` extension)
+
+### Attenuate APAC audio
+
+Lower the embedded APAC level and write a new MOV. Video is copied; APAC is decoded, scaled, and re-encoded. `--gain` must be 0 dB or negative (never boosts).
+
+```bash
+ambimux attenuate clip.mov --gain -3.5 --output clip_quiet.mov
+```
+
+- `--gain`: Attenuation in dB (≤ 0)
+- `--output`, `-o`: Output MOV path (required)
 
 ## Technical Specifications
 

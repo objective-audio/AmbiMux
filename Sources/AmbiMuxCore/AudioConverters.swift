@@ -96,21 +96,8 @@ private func makeAmbisonicsAudioPipeline(
     // HOA レイアウトは append 直前に mapSampleBuffer で付与する。
     let audioInput: AVAssetWriterInput
     if outputAudioFormat == .apac && !isSourceAPAC {
-        guard let ambisonicsOrder = AmbisonicsOrder(channelCount: channelCount) else {
-            throw AmbiMuxError.invalidChannelCount(count: channelCount)
-        }
-        let layoutData = try audioChannelLayoutDataHOAACNSN3D(channelCount: channelCount)
-        let writerAudioSettings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatAPAC,
-            AVSampleRateKey: decodeSampleRate,
-            AVNumberOfChannelsKey: ambisonicsOrder.channelCount,
-            AVChannelLayoutKey: layoutData,
-            AVEncoderBitRateKey: 384000,
-            AVEncoderContentSourceKey: AVAudioContentSource.appleAV_Spatial_Offline.rawValue,
-            AVEncoderDynamicRangeControlConfigurationKey: AVAudioDynamicRangeControlConfiguration
-                .movie.rawValue,
-            AVEncoderASPFrequencyKey: 75,
-        ]
+        let writerAudioSettings = try apacWriterOutputSettings(
+            channelCount: channelCount, sampleRate: decodeSampleRate)
         audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: writerAudioSettings)
     } else if outputAudioFormat == .lpcm && !isSourceAPAC {
         guard let decodeASBD else {
@@ -162,7 +149,7 @@ private func makeVideoPipeline(videoAsset: AVURLAsset) async throws -> VideoTrac
     )
 }
 
-private func pump(
+func pump(
     writerInput: AVAssetWriterInput,
     readerOutput: AVAssetReaderOutput,
     queueLabel: String,
