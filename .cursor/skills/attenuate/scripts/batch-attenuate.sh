@@ -13,8 +13,16 @@
 
 set -uo pipefail
 
-# Always emit this last so agents can treat process exit as complete only after this line.
-trap 'echo "BATCH_ATTENUATE_DONE exit=$?"' EXIT
+# stdout marker always; sentinel file after OUTPUT_DIR is known.
+DONE_FILE=""
+emit_done() {
+  local ec=$?
+  printf 'BATCH_ATTENUATE_DONE exit=%s\n' "$ec"
+  if [[ -n "${DONE_FILE:-}" ]]; then
+    printf 'exit=%s\n' "$ec" > "$DONE_FILE"
+  fi
+}
+trap emit_done EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_REPO="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -43,6 +51,8 @@ is_nonneg_number() {
 }
 
 mkdir -p "$OUTPUT_DIR"
+DONE_FILE="$(abs_path "$OUTPUT_DIR")/.batch-attenuate.done"
+rm -f "$DONE_FILE"
 
 if [[ ! -d "$INPUT_DIR" ]]; then
   echo "error: input directory does not exist: $INPUT_DIR" >&2
