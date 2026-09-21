@@ -22,7 +22,8 @@ struct MuxCommand: AsyncParsableCommand {
 
     @Option(
         name: [.customShort("o"), .customLong("output")],
-        help: "Output file path (optional, defaults to video filename with .mov extension)"
+        help:
+            "Output file path (optional, defaults to a unique name beside the video). An existing file at this path is overwritten."
     )
     var outputFilePath: String?
 

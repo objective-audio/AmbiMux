@@ -179,6 +179,43 @@ struct AudioUtilitiesTests {
         #expect(resultPath == expectedPath)
     }
 
+    @Test func testGenerateOutputPathWithCustomPathWhenFileExists() throws {
+        let tempDir = try createTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let customOutputPath = tempDir.appendingPathComponent("custom_output.mov").path
+        let videoPath = tempDir.appendingPathComponent("input.mov").path
+        FileManager.default.createFile(atPath: customOutputPath, contents: Data(), attributes: nil)
+
+        let resultPath = generateOutputPath(
+            outputPath: customOutputPath,
+            videoPath: videoPath
+        )
+
+        #expect(resultPath == customOutputPath)
+        let uniquified = tempDir.appendingPathComponent("custom_output_1.mov").path
+        #expect(resultPath != uniquified)
+    }
+
+    @Test func testGenerateOutputPathWithDefaultPathWhenFileExists() throws {
+        let tempDir = try createTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let videoPath = tempDir.appendingPathComponent("input.mov").path
+        FileManager.default.createFile(atPath: videoPath, contents: Data(), attributes: nil)
+
+        let resultPath = generateOutputPath(
+            outputPath: nil,
+            videoPath: videoPath
+        )
+
+        #expect(resultPath == tempDir.appendingPathComponent("input_1.mov").path)
+    }
+
     // MARK: - audioChannelLayoutDataHOAACNSN3D
 
     @Test(

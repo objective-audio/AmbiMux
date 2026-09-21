@@ -465,7 +465,9 @@ nonisolated func generateUniqueFileName(
     return newPath
 }
 
-// Generate output file path
+// Generate output file path.
+// Explicit `outputPath` is used as-is (forced to `.mov`) even if the file exists.
+// When omitted, a unique name is derived from `videoPath`.
 nonisolated func generateOutputPath(outputPath: String?, videoPath: String) -> String {
     let sourcePath = outputPath ?? videoPath
     let url = URL(fileURLWithPath: sourcePath)
@@ -473,6 +475,13 @@ nonisolated func generateOutputPath(outputPath: String?, videoPath: String) -> S
     let directory = url.deletingLastPathComponent().path
     let fileName = url.deletingPathExtension().lastPathComponent
     let fileExtension = "mov"  // Always output in MOV format
+
+    if outputPath != nil {
+        return URL(fileURLWithPath: directory)
+            .appendingPathComponent(fileName)
+            .appendingPathExtension(fileExtension)
+            .path
+    }
 
     return generateUniqueFileName(
         directory: directory, fileName: fileName, extension: fileExtension)

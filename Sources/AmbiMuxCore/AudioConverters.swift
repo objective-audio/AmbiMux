@@ -313,6 +313,11 @@ func convertVideoWithAudioToMOV(
         }
     }
 
+    // AVAssetWriter cannot overwrite an existing file.
+    if FileManager.default.fileExists(atPath: outputPath) {
+        try FileManager.default.removeItem(atPath: outputPath)
+    }
+
     // Create AVAssetWriter
     let assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
     let videoInput = videoPipeline.writerInput

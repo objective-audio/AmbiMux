@@ -250,6 +250,42 @@ struct RunAmbiMuxTests {
         }
     }
 
+    @Test func testRunAmbiMuxOverwritesExplicitOutputPath() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let audioPath = try TestResourceHelper.resourcePath(
+            for: "test_48k_4ch", withExtension: "wav")
+        let videoPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let outputPath = URL(fileURLWithPath: cachePath).appendingPathComponent(
+            "runAmbi_overwrite_output.mov"
+        ).path
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
+
+        try "placeholder".write(toFile: outputPath, atomically: true, encoding: .utf8)
+
+        try await runAmbiMux(
+            audioPath: audioPath,
+            videoPath: videoPath,
+            outputPath: outputPath
+        )
+
+        #expect(FileManager.default.fileExists(atPath: outputPath))
+        let uniquified = URL(fileURLWithPath: cachePath).appendingPathComponent(
+            "runAmbi_overwrite_output_1.mov"
+        ).path
+        #expect(!FileManager.default.fileExists(atPath: uniquified))
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let videoTracks = try await outputAsset.loadTracks(withMediaType: .video)
+        #expect(!videoTracks.isEmpty)
+    }
+
     @Test func testRunAmbiMuxSuccessWithVideoAudioFallback() async throws {
         // Create test directory
         let cachePath = try TestResourceHelper.createTestDirectory()
