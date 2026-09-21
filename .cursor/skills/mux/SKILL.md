@@ -33,7 +33,7 @@ description: Batch convert all .mov videos in workspace/mux-input/. For each MOV
 |------|------|
 | 外部音声の優先 | `.mp4` → `.wav` → `.aiff`。`<movのベース名>` で始まるファイルを入力ディレクトリ直下から1件選ぶ（例: `video_abc.mov` → `video_abc*.mp4` など） |
 | 埋め込みフォールバック | 外部が無いとき、音声ストリームのうち **4 / 9 / 16ch が1本でもあれば** 埋め込みで変換対象。それ以外はスキップ |
-| 出力パス | `<ベース名>_ambimux.mov`（既存と重なる場合は `_1` 等でユニーク化。**ambimux** 側の挙動） |
+| 出力パス | `<ベース名>_ambimux.mov`（`--output` 指定のため既存ファイルがあれば上書き） |
 | 主トラック | 常に **`--audio-output apac`**。入力が APAC ならコピー、LPCM なら APAC エンコード |
 | 外部音声利用時 | 映像側に 1/2ch の埋め込みがあれば **第2トラックとしてパススルー**（フォールバック） |
 

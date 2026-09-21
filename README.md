@@ -54,7 +54,7 @@ ambimux --audio /path/to/audio.wav --video /path/to/video.mov --output /path/to/
 - `--audio`, `-a`: Path to spatial audio file (APAC or LPCM, auto-detected). Omit to use audio embedded in the video file.
 - `--audio-output`: Output audio format when input is LPCM: `lpcm` (default) or `apac`
 - `--video`, `-v`: Path to input video file
-- `--output`, `-o`: Output file path (optional, defaults to the same name as the video file with `.mov` extension)
+- `--output`, `-o`: Output file path (optional, defaults to a unique `.mov` name beside the video). If specified and the file already exists, it is overwritten.
 
 ### Attenuate APAC audio
 
