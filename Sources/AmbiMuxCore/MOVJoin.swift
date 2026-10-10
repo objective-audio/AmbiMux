@@ -89,13 +89,16 @@ nonisolated private func selectOrderedAudioTracks(
         }
     }
 
-    guard let ambisonics else {
-        throw AmbiMuxError.noAmbisonicsTrackFound
+    if let ambisonics {
+        var result = [ambisonics]
+        if let fallback { result.append(fallback) }
+        return result
     }
 
-    var result = [ambisonics]
-    if let fallback { result.append(fallback) }
-    return result
+    guard let fallback else {
+        throw AmbiMuxError.noAmbisonicsTrackFound
+    }
+    return [fallback]
 }
 
 nonisolated private func collectAudioTrackSignatures(

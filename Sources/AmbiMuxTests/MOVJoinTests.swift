@@ -338,4 +338,45 @@ struct MOVJoinTests {
 
         #expect(!FileManager.default.fileExists(atPath: outputPath))
     }
+
+    @Test func testRunJoinMOVSucceedsWithStereoOnlyClips() async throws {
+        let cachePath = try TestResourceHelper.createTestDirectory()
+        defer { try? TestResourceHelper.removeTestDirectory(at: cachePath) }
+
+        let clipPath = try TestResourceHelper.resourcePath(for: "test_2ch", withExtension: "mov")
+        let outputPath = URL(fileURLWithPath: cachePath)
+            .appendingPathComponent("join_stereo_output.mov").path
+
+        let clipAsset = AVURLAsset(url: URL(fileURLWithPath: clipPath))
+        let clipVideo = try await clipAsset.loadTracks(withMediaType: .video)[0]
+        let clipDuration = CMTimeGetSeconds(try await clipVideo.load(.timeRange).duration)
+
+        try await runJoinMOV(inputPaths: [clipPath, clipPath], outputPath: outputPath)
+
+        let outputExists = FileManager.default.fileExists(atPath: outputPath)
+        #expect(outputExists, "Joined stereo output file should be created")
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputPath))
+        let outputVideoTracks = try await outputAsset.loadTracks(withMediaType: .video)
+        #expect(outputVideoTracks.count == 1, "Output should have one video track")
+
+        let outputDuration = CMTimeGetSeconds(
+            try await outputVideoTracks[0].load(.timeRange).duration)
+        #expect(
+            abs(outputDuration - (clipDuration * 2)) < 0.1,
+            "Output duration should equal sum of input durations"
+        )
+
+        let outputAudioTracks = try await outputAsset.loadTracks(withMediaType: .audio)
+        #expect(outputAudioTracks.count == 1, "Stereo-only join should keep a single audio track")
+
+        let audioFormat = try await outputAudioTracks[0].load(.formatDescriptions)
+        guard let formatDescription = audioFormat.first,
+            let asbd = formatDescription.audioStreamBasicDescription
+        else {
+            Issue.record("Could not get stereo audio format")
+            return
+        }
+        #expect(Int(asbd.mChannelsPerFrame) == 2, "Primary track should stay stereo")
+    }
 }
