@@ -16,7 +16,7 @@ description: Join MOV clips via batch-join.sh — either all .mov in workspace/j
 ## 前提条件
 
 - AVFoundation による書き出しのため、実行は `required_permissions: ["all"]`（サンドボックスなし）とする
-- 各入力 MOV には **Ambisonics（4/9/16ch）** の主音声トラックが必要。モノ/ステレオのみのクリップは結合できない
+- 各入力 MOV には音声トラックが必要。主音声は **Ambisonics（4/9/16ch）**、または **モノ/ステレオのみ**。ステレオ（またはモノ）だけのクリップもパススルーで結合できる。Ambisonics があるときは、あれば先頭の 1/2ch をフォールバックとして残す
 
 ## ワークフロー（batch-join.sh）
 
@@ -105,10 +105,11 @@ workspace/
 ### `noAmbisonicsTrackFound` / `noAudioTracksFound`
 
 **原因:**
-- 入力 MOV に Ambisonics 主トラックがない、または音声トラックが読み取れない
+- 入力 MOV に Ambisonics もモノ/ステレオもない、または音声トラックが読み取れない
 
 **対処:**
-- 先に mux スキルで APAC 空間音声を mux したクリップを使う
+- ステレオ（またはモノ）だけのクリップはそのまま結合できる
+- 空間音声が必要なら、先に mux スキルで APAC を mux したクリップを使う
 
 ### `videoTrackNotFound`
 
@@ -132,7 +133,7 @@ workspace/
 - Ambisonics でもモノ/ステレオでもないチャンネル数の音声トラックがある
 
 **対処:**
-- 4・9・16ch Ambisonics + 任意の 1/2ch フォールバック構成に揃える
+- 4・9・16ch Ambisonics（任意で 1/2ch フォールバック）、またはモノ/ステレオのみに揃える
 
 ## 例
 
